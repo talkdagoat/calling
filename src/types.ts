@@ -81,8 +81,6 @@ export interface CallRecord {
   duration: number;
   e2eeVerified: boolean;
   notes?: string;
-  aiSummary?: string;
-  actionItems?: string[];
 }
 
 export interface InCallMessage {
@@ -92,21 +90,6 @@ export interface InCallMessage {
   text: string;
   timestamp: string;
   isEncrypted: boolean;
-}
-
-export interface AICallAssistantState {
-  isActive: boolean;
-  liveTranscripts: Array<{
-    id: string;
-    speaker: string;
-    text: string;
-    timestamp: string;
-  }>;
-  keyPoints: string[];
-  actionItems: string[];
-  summary: string;
-  securityVerdict?: string;
-  isThinking: boolean;
 }
 
 export interface RingtoneConfig {

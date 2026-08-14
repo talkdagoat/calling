@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Settings, Volume2, Bell, Smartphone, Laptop, Shield, User, Play, Square, 
-  Mic, Video, Check, Sparkles, X, RefreshCw 
+  Mic, Video, Check, X, RefreshCw, HardDrive, Radio, CheckCircle2 
 } from 'lucide-react';
 import { RingtoneConfig, UserIdentity } from '../types';
 import { ringEngine } from '../utils/audioRingEngine';
 import { mediaManager } from '../utils/webrtcManager';
+import { notificationEngine } from '../utils/notificationEngine';
+import { googleDriveService } from '../utils/googleDriveSync';
 
 interface DeviceSettingsModalProps {
   isOpen: boolean;
@@ -14,13 +16,14 @@ interface DeviceSettingsModalProps {
   onSaveRingtoneConfig: (config: RingtoneConfig) => void;
   currentIdentity: UserIdentity;
   onSwitchIdentity: (newIdentity: UserIdentity) => void;
+  onOpenDriveModal?: () => void;
 }
 
 export const PRESET_TEST_IDENTITIES: UserIdentity[] = [
   {
     id: 'user_alice_dev',
     name: 'Alice Chen (You)',
-    email: 'alice.chen@ciphercall.io',
+    email: 'alice.chen@talk.io',
     phone: '+1 (555) 234-8901',
     avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
     deviceId: 'device_macbook_pro',
@@ -30,7 +33,7 @@ export const PRESET_TEST_IDENTITIES: UserIdentity[] = [
   {
     id: 'user_marcus_vance',
     name: 'Marcus Vance (Tab 2 Test)',
-    email: 'marcus.v@hyperstream.dev',
+    email: 'marcus.v@talk.io',
     phone: '+1 (555) 712-9903',
     avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80',
     deviceId: 'device_iphone_15',
@@ -40,7 +43,7 @@ export const PRESET_TEST_IDENTITIES: UserIdentity[] = [
   {
     id: 'user_elena_rostova',
     name: 'Dr. Elena Rostova (Test Profile)',
-    email: 'elena.r@quantumsecure.org',
+    email: 'elena.r@talk.io',
     phone: '+1 (555) 389-4029',
     avatar: 'https://images.unsplash.com/photo-1580489944761-15a19d654956?w=150&auto=format&fit=crop&q=80',
     deviceId: 'device_ipad_pro',
@@ -56,11 +59,15 @@ export const DeviceSettingsModal: React.FC<DeviceSettingsModalProps> = ({
   onSaveRingtoneConfig,
   currentIdentity,
   onSwitchIdentity,
+  onOpenDriveModal,
 }) => {
   const [activeRingtone, setActiveRingtone] = useState(ringtoneConfig.ringtoneType);
   const [volume, setVolume] = useState(ringtoneConfig.volume * 100);
   const [isPlayingTestRing, setIsPlayingTestRing] = useState(false);
   const [micLevel, setMicLevel] = useState(0);
+  const [notifPermission, setNotifPermission] = useState<NotificationPermission>(
+    typeof Notification !== 'undefined' ? Notification.permission : 'default'
+  );
 
   useEffect(() => {
     let animId: number;
@@ -71,6 +78,9 @@ export const DeviceSettingsModal: React.FC<DeviceSettingsModalProps> = ({
         animId = requestAnimationFrame(pollVolume);
       };
       animId = requestAnimationFrame(pollVolume);
+      if (typeof Notification !== 'undefined') {
+        setNotifPermission(Notification.permission);
+      }
     }
     return () => {
       if (animId) cancelAnimationFrame(animId);
@@ -92,6 +102,16 @@ export const DeviceSettingsModal: React.FC<DeviceSettingsModalProps> = ({
   const handleStopRingtone = () => {
     ringEngine.stopAll();
     setIsPlayingTestRing(false);
+  };
+
+  const handleEnableNotifications = async () => {
+    const granted = await notificationEngine.requestNotificationPermission();
+    if (typeof Notification !== 'undefined') {
+      setNotifPermission(Notification.permission);
+    }
+    if (granted) {
+      notificationEngine.triggerIncomingCallAlert('Test Caller (Talk)', 'audio', 'test_123');
+    }
   };
 
   const handleSaveSettings = () => {
@@ -118,8 +138,8 @@ export const DeviceSettingsModal: React.FC<DeviceSettingsModalProps> = ({
               <Settings className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-lg font-bold text-white">Device, Ringtone & Identity Settings</h2>
-              <p className="text-xs text-zinc-400">Configure telephony tones, multi-device routing & profiles</p>
+              <h2 className="text-lg font-bold text-white">Talk Settings & Preferences</h2>
+              <p className="text-xs text-zinc-400">Ringtone synthesizer, background notifications & Google Drive storage</p>
             </div>
           </div>
           <button
@@ -174,18 +194,51 @@ export const DeviceSettingsModal: React.FC<DeviceSettingsModalProps> = ({
             })}
           </div>
           <p className="text-[11px] text-zinc-500 mt-2">
-            💡 <strong>Multi-tab testing tip:</strong> Open this app in two tabs, select "Alice" in Tab 1 and "Marcus" in Tab 2. Call Marcus from Tab 1 to hear Tab 2 ring with real WebSockets & E2EE!
+            💡 <strong>Multi-tab testing tip:</strong> Open Talk in two browser tabs. Select "Alice" in Tab 1 and "Marcus" in Tab 2 to test instant real-time incoming call ringing!
           </p>
         </div>
 
-        {/* 2. Ringtone Synthesizer Settings */}
+        {/* 2. Background Ringing & System Notification Setup */}
+        <div className="mb-5 p-4 bg-[#0c0c0e] rounded-2xl border border-zinc-800/90 shadow-inner">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-bold text-zinc-100 flex items-center gap-1.5">
+              <Radio className="w-4 h-4 text-emerald-400" />
+              Background Incoming Call Ringing (PWA)
+            </span>
+            {notifPermission === 'granted' ? (
+              <span className="px-2 py-0.5 bg-emerald-950 border border-emerald-500/40 text-emerald-300 text-[10px] font-mono rounded-full flex items-center gap-1">
+                <CheckCircle2 className="w-3 h-3 text-emerald-400" /> Enabled
+              </span>
+            ) : (
+              <span className="px-2 py-0.5 bg-amber-950/80 border border-amber-500/40 text-amber-300 text-[10px] font-mono rounded-full">
+                Action Required
+              </span>
+            )}
+          </div>
+          <p className="text-[11px] text-zinc-400 mb-3">
+            Allows your device to ring with audio and show native incoming call alerts when Talk is minimized, running in the background, or installed as a Progressive Web App.
+          </p>
+          <div className="flex items-center justify-between pt-2 border-t border-zinc-800">
+            <span className="text-xs text-zinc-300 font-mono">System Ring Permission: {notifPermission}</span>
+            {notifPermission !== 'granted' && (
+              <button
+                onClick={handleEnableNotifications}
+                className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-semibold shadow-xs"
+              >
+                Enable Background Ringing
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* 3. Ringtone Synthesizer Settings */}
         <div className="mb-5 p-4 bg-[#0c0c0e] rounded-2xl border border-zinc-800/90 shadow-inner">
           <div className="flex items-center justify-between mb-3">
             <span className="text-xs font-bold text-zinc-100 flex items-center gap-1.5">
               <Bell className="w-4 h-4 text-emerald-400" />
               Incoming Call Ringtone Synthesizer
             </span>
-            <span className="text-[10px] text-emerald-400 font-mono">Web Audio API (Zero Latency)</span>
+            <span className="text-[10px] text-emerald-400 font-mono">Web Audio API</span>
           </div>
 
           {/* Ringtone Flavors */}
@@ -260,7 +313,7 @@ export const DeviceSettingsModal: React.FC<DeviceSettingsModalProps> = ({
           </div>
         </div>
 
-        {/* 3. Audio & Mic Meter */}
+        {/* 4. Audio & Mic Meter */}
         <div className="mb-5 p-4 bg-[#0c0c0e] rounded-2xl border border-zinc-800/90 shadow-inner">
           <div className="flex items-center justify-between text-xs text-zinc-300 mb-2">
             <span className="flex items-center gap-1.5 font-bold text-white">

@@ -1,13 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   Phone, PhoneOff, Mic, MicOff, Video, VideoOff, ScreenShare, ShieldCheck, 
-  Sparkles, MessageSquare, Users, Hand, Smile, Disc, Volume2, VolumeX, 
+  MessageSquare, Users, Hand, Smile, Disc, Volume2, VolumeX, 
   Maximize2, Minimize2, Settings, Lock, CheckCircle2, ChevronRight, X, Send 
 } from 'lucide-react';
 import { CallSession, InCallMessage, Participant } from '../types';
 import { mediaManager } from '../utils/webrtcManager';
 import { ringEngine } from '../utils/audioRingEngine';
-import { AICallAssistant } from './AICallAssistant';
 import { E2EESafetyModal } from './E2EESafetyModal';
 
 interface ActiveCallViewProps {
@@ -33,7 +32,7 @@ export const ActiveCallView: React.FC<ActiveCallViewProps> = ({
   onRaiseHand,
   onSendReaction,
 }) => {
-  const [activeTab, setActiveTab] = useState<'none' | 'chat' | 'participants' | 'ai'>('none');
+  const [activeTab, setActiveTab] = useState<'none' | 'chat' | 'participants'>('none');
   const [chatInput, setChatInput] = useState('');
   const [isSafetyModalOpen, setIsSafetyModalOpen] = useState(false);
   const [isVerified, setIsVerified] = useState(false);
@@ -206,20 +205,6 @@ export const ActiveCallView: React.FC<ActiveCallViewProps> = ({
 
         {/* Right: Quick Action Drawers */}
         <div className="flex items-center gap-2">
-          {/* Gemini AI Assistant Drawer Toggle */}
-          <button
-            id="toggle-ai-assistant-btn"
-            onClick={() => setActiveTab(activeTab === 'ai' ? 'none' : 'ai')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium border transition-colors shadow-xs ${
-              activeTab === 'ai'
-                ? 'bg-emerald-600 text-white border-emerald-500 shadow-lg shadow-emerald-950/50'
-                : 'bg-[#18181d] text-emerald-300 border-emerald-500/30 hover:bg-[#222228]'
-            }`}
-          >
-            <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
-            <span>AI Notes</span>
-          </button>
-
           {/* Chat Toggle */}
           <button
             onClick={() => setActiveTab(activeTab === 'chat' ? 'none' : 'chat')}
@@ -453,17 +438,6 @@ export const ActiveCallView: React.FC<ActiveCallViewProps> = ({
               )}
             </div>
           </div>
-        )}
-
-        {/* Right Side Drawer: Gemini AI Assistant */}
-        {activeTab === 'ai' && (
-          <AICallAssistant
-            callDuration={call.duration}
-            callType={call.type}
-            participants={call.participants}
-            isOpen={true}
-            onToggle={() => setActiveTab('none')}
-          />
         )}
       </div>
 

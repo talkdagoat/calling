@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { ShieldCheck, ShieldAlert, Lock, CheckCircle2, QrCode, Sparkles, RefreshCw, X, Key, Shield, HelpCircle } from 'lucide-react';
+import React from 'react';
+import { ShieldCheck, Lock, CheckCircle2, X, Key, Shield } from 'lucide-react';
 import { UserIdentity } from '../types';
 
 interface E2EESafetyModalProps {
@@ -23,36 +23,9 @@ export const E2EESafetyModal: React.FC<E2EESafetyModalProps> = ({
   isVerified,
   onToggleVerified,
 }) => {
-  const [aiAuditLoading, setAiAuditLoading] = useState(false);
-  const [aiAuditResult, setAiAuditResult] = useState<any | null>(null);
-
   if (!isOpen) return null;
 
   const safetyBlocks = (safetyNumber || '48291 19482 73819 50192').split(' ');
-
-  const handleRunAiAudit = async () => {
-    setAiAuditLoading(true);
-    try {
-      const res = await fetch('/api/ai/security-audit', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          localFingerprint: localIdentity.publicKeyFingerprint,
-          remoteFingerprint: remoteFingerprint || '99DA F102 77B4 4920 18EA',
-          safetyNumber: safetyNumber || '48291 19482 73819 50192',
-          cipherSuite: 'ECDH P-256 + AES-GCM-256 + SHA-256 SAS',
-        }),
-      });
-      const data = await res.json();
-      if (data.audit) {
-        setAiAuditResult(data.audit);
-      }
-    } catch (e) {
-      console.error('Audit failed', e);
-    } finally {
-      setAiAuditLoading(false);
-    }
-  };
 
   return (
     <div id="e2ee-safety-modal-overlay" className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-xl animate-fade-in">
@@ -131,57 +104,30 @@ export const E2EESafetyModal: React.FC<E2EESafetyModalProps> = ({
           </div>
         </div>
 
-        {/* Gemini AI Cryptographic Security Audit */}
-        <div className="p-4 bg-gradient-to-br from-[#121216] to-emerald-950/30 rounded-2xl border border-emerald-500/30 mb-5 shadow-inner">
-          <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-2 text-xs font-semibold text-emerald-300">
-              <Sparkles className="w-4 h-4 text-emerald-400 animate-pulse" />
-              <span>Gemini AI Cryptographic Security Audit</span>
-            </div>
-            <button
-              id="run-ai-security-audit-btn"
-              onClick={handleRunAiAudit}
-              disabled={aiAuditLoading}
-              className="px-2.5 py-1 bg-emerald-600/30 hover:bg-emerald-600 text-emerald-300 hover:text-white border border-emerald-500/40 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-colors disabled:opacity-50 shadow-xs"
-            >
-              {aiAuditLoading ? (
-                <>
-                  <RefreshCw className="w-3 h-3 animate-spin" />
-                  <span>Auditing...</span>
-                </>
-              ) : (
-                <>
-                  <Sparkles className="w-3 h-3" />
-                  <span>Run Audit</span>
-                </>
-              )}
-            </button>
+        {/* Cryptographic Architecture Card */}
+        <div className="p-4 bg-[#0c0c0e] rounded-2xl border border-zinc-800/90 mb-5 shadow-inner">
+          <div className="flex items-center gap-2 text-xs font-semibold text-emerald-300 mb-2">
+            <Shield className="w-4 h-4 text-emerald-400" />
+            <span>Cryptographic Architecture & Zero-Knowledge Verification</span>
           </div>
-
-          {aiAuditResult ? (
-            <div className="text-xs space-y-2 pt-2 border-t border-emerald-900/50">
-              <div className="flex items-center justify-between">
-                <span className="text-zinc-400">Security Grade:</span>
-                <span className="font-bold text-emerald-400">{aiAuditResult.securityLevel}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-zinc-400">MITM Attack Risk:</span>
-                <span className="font-bold text-emerald-300">{aiAuditResult.mitmRisk}</span>
-              </div>
-              <p className="text-zinc-300 bg-[#0c0c0e] p-2.5 rounded-lg border border-zinc-800">
-                {aiAuditResult.plainExplanation}
-              </p>
-              {aiAuditResult.technicalSpecs && (
-                <div className="text-[11px] font-mono text-zinc-400">
-                  Specs: {aiAuditResult.technicalSpecs}
-                </div>
-              )}
+          <div className="text-xs space-y-1.5 text-zinc-400">
+            <div className="flex items-center justify-between">
+              <span>Key Agreement:</span>
+              <span className="font-mono text-zinc-200">ECDH P-256 (Web Crypto)</span>
             </div>
-          ) : (
-            <p className="text-xs text-zinc-400">
-              Click 'Run Audit' to verify the mathematical entropy and zero-knowledge posture with Gemini AI.
-            </p>
-          )}
+            <div className="flex items-center justify-between">
+              <span>Symmetric Media Cipher:</span>
+              <span className="font-mono text-zinc-200">AES-GCM 256-bit</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span>Authentication String:</span>
+              <span className="font-mono text-zinc-200">HMAC-SHA-256 SAS</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span>Storage Persistence:</span>
+              <span className="font-mono text-emerald-400">Google Drive Private Cloud</span>
+            </div>
+          </div>
         </div>
 
         {/* Verification Checkbox & Footer */}

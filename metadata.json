@@ -1,6 +1,6 @@
 {
-  "name": "CipherCall - E2EE Video & Audio Calling",
-  "description": "Secure end-to-end encrypted calling application with multi-device incoming call ringing, 1-to-1 HD audio, group video conferencing, JSON contact management, and Gemini AI live assistant.",
-  "requestFramePermissions": ["camera", "microphone"],
+  "name": "Talk",
+  "description": "Secure end-to-end encrypted voice and video calling web app with multi-device incoming call ringing, background PWA notifications, and Google Drive cloud data storage.",
+  "requestFramePermissions": ["camera", "microphone", "notifications"],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { 
   Contact, UserIdentity, CallSession, CallRecord, CallType, InCallMessage, 
   RingtoneConfig, SignalingMessage 
@@ -13,6 +13,8 @@ import {
 } from './utils/crypto';
 import { ringEngine } from './utils/audioRingEngine';
 import { mediaManager } from './utils/webrtcManager';
+import { googleDriveService, TalkDrivePayload } from './utils/googleDriveSync';
+import { notificationEngine } from './utils/notificationEngine';
 
 import { Navbar } from './components/Navbar';
 import { ContactsManager } from './components/ContactsManager';
@@ -21,6 +23,7 @@ import { CallHistoryView } from './components/CallHistoryView';
 import { IncomingCallModal } from './components/IncomingCallModal';
 import { ActiveCallView } from './components/ActiveCallView';
 import { DeviceSettingsModal, PRESET_TEST_IDENTITIES } from './components/DeviceSettingsModal';
+import { GoogleDriveModal } from './components/GoogleDriveModal';
 
 export default function App() {
   // Navigation
@@ -47,7 +50,7 @@ export default function App() {
         timestamp: 'Today at 10:45 AM',
         duration: 245,
         e2eeVerified: true,
-        notes: 'Discussed ECDH P-256 key agreement specifications.',
+        notes: 'Discussed ECDH P-256 key agreement and Google Drive sync.',
       },
       {
         id: 'hist_sample_2',
@@ -92,6 +95,7 @@ export default function App() {
 
   // Modals & Drawers
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isDriveModalOpen, setIsDriveModalOpen] = useState(false);
 
   // Active Call & Incoming Call State
   const [activeCall, setActiveCall] = useState<CallSession | null>(null);
@@ -104,7 +108,32 @@ export default function App() {
   const wsRef = useRef<WebSocket | null>(null);
   const callTimerRef = useRef<any>(null);
 
-  // Initialize Web Crypto keys on startup
+  // Background auto-sync helper to Google Drive
+  const triggerBackgroundDriveSync = useCallback((
+    updatedContacts?: Contact[], 
+    updatedHistory?: CallRecord[], 
+    updatedSettings?: RingtoneConfig
+  ) => {
+    if (googleDriveService.isConnected() && googleDriveService.isAutoSyncEnabled()) {
+      const payload: TalkDrivePayload = {
+        version: '1.0.0',
+        lastSyncedAt: new Date().toISOString(),
+        user: {
+          name: identity.name,
+          deviceId: identity.deviceId,
+          publicKeyFingerprint: identity.publicKeyFingerprint,
+        },
+        contacts: updatedContacts || contacts,
+        callHistory: updatedHistory || callHistory,
+        settings: updatedSettings || ringtoneConfig,
+      };
+      googleDriveService.savePayloadToDrive(payload).catch((e) => {
+        console.warn('Background Drive sync deferred:', e);
+      });
+    }
+  }, [contacts, callHistory, identity, ringtoneConfig]);
+
+  // Initialize Web Crypto keys, Service Worker & Google Drive data on startup
   useEffect(() => {
     generateIdentityKeyPair().then((keys) => {
       setCryptoKeys(keys);
@@ -114,18 +143,60 @@ export default function App() {
         publicKeyBase64: keys.publicKeyBase64,
       }));
     });
+
+    // Initialize Service Worker for background notifications and ringing
+    notificationEngine.initServiceWorker();
+
+    // Listen to messages from Service Worker (e.g., when user clicks Answer/Decline in notification)
+    if ('serviceWorker' in navigator) {
+      const handleSwMessage = (event: MessageEvent) => {
+        if (event.data?.type === 'SW_ACCEPT_CALL') {
+          handleAnswerCall('audio');
+        } else if (event.data?.type === 'SW_DECLINE_CALL') {
+          handleDeclineCall();
+        }
+      };
+      navigator.serviceWorker.addEventListener('message', handleSwMessage);
+      return () => {
+        navigator.serviceWorker.removeEventListener('message', handleSwMessage);
+      };
+    }
   }, []);
 
-  // Save contacts updates to localStorage
+  // Attempt initial load from Google Drive if already connected
+  useEffect(() => {
+    if (googleDriveService.isConnected()) {
+      googleDriveService.loadPayloadFromDrive().then((res) => {
+        if (res.success && res.data) {
+          if (res.data.contacts) {
+            setContacts(res.data.contacts);
+            saveContactsToStorage(res.data.contacts);
+          }
+          if (res.data.callHistory) {
+            setCallHistory(res.data.callHistory);
+            localStorage.setItem(STORAGE_KEY_CALL_LOGS, JSON.stringify(res.data.callHistory));
+          }
+          if (res.data.settings) {
+            setRingtoneConfig(res.data.settings);
+            localStorage.setItem(STORAGE_KEY_SETTINGS, JSON.stringify(res.data.settings));
+          }
+        }
+      });
+    }
+  }, []);
+
+  // Save contacts updates to localStorage and Google Drive
   const handleSaveContacts = (newContacts: Contact[]) => {
     setContacts(newContacts);
     saveContactsToStorage(newContacts);
+    triggerBackgroundDriveSync(newContacts, callHistory, ringtoneConfig);
   };
 
-  // Save call records to localStorage
+  // Save call records to localStorage and Google Drive
   const saveCallRecords = (newRecords: CallRecord[]) => {
     setCallHistory(newRecords);
     localStorage.setItem(STORAGE_KEY_CALL_LOGS, JSON.stringify(newRecords));
+    triggerBackgroundDriveSync(contacts, newRecords, ringtoneConfig);
   };
 
   // Setup WebSocket Signaling
@@ -196,6 +267,12 @@ export default function App() {
               setIncomingCall(incoming);
               // Ring device!
               ringEngine.startIncomingRing(ringtoneConfig.ringtoneType);
+              // Trigger background PWA system alert
+              notificationEngine.triggerIncomingCallAlert(
+                msg.sender.name || 'Incoming Caller',
+                msg.callType || 'audio',
+                msg.callId
+              );
               break;
             }
 
@@ -203,6 +280,7 @@ export default function App() {
               // Remote peer answered our call!
               ringEngine.stopAll();
               ringEngine.playConnectedTone();
+              notificationEngine.dismissIncomingCallAlert(msg.callId);
 
               setActiveCall((prev) => {
                 if (!prev) return null;
@@ -218,6 +296,7 @@ export default function App() {
             case 'call:cancelled_elsewhere':
             case 'call:rejected': {
               ringEngine.stopAll();
+              notificationEngine.dismissIncomingCallAlert(msg.callId);
               if (incomingCall?.id === msg.callId) {
                 setIncomingCall(null);
               }
@@ -231,6 +310,7 @@ export default function App() {
             case 'call:ended': {
               ringEngine.stopAll();
               ringEngine.playEndCallTone();
+              notificationEngine.dismissIncomingCallAlert(msg.callId);
               if (activeCall?.id === msg.callId) {
                 handleCallEndedCleanup(activeCall);
               }
@@ -343,7 +423,6 @@ export default function App() {
     }
 
     // Auto-Connect simulation fallback after 3.5s if test contact is called
-    // (allows single-tab interactive testing of all in-call features!)
     setTimeout(() => {
       setActiveCall((current) => {
         if (current && current.id === callId && current.status === 'outgoing') {
@@ -416,6 +495,7 @@ export default function App() {
     if (!incomingCall) return;
     ringEngine.stopAll();
     ringEngine.playConnectedTone();
+    notificationEngine.dismissIncomingCallAlert(incomingCall.id);
 
     const connectedCall: CallSession = {
       ...incomingCall,
@@ -447,6 +527,7 @@ export default function App() {
   const handleDeclineCall = () => {
     if (!incomingCall) return;
     ringEngine.stopAll();
+    notificationEngine.dismissIncomingCallAlert(incomingCall.id);
 
     // Log as missed call
     const record: CallRecord = {
@@ -483,6 +564,7 @@ export default function App() {
     if (!activeCall) return;
     ringEngine.stopAll();
     ringEngine.playEndCallTone();
+    notificationEngine.dismissIncomingCallAlert(activeCall.id);
 
     // Notify peers over WebSocket
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
@@ -597,14 +679,35 @@ export default function App() {
     }
   };
 
+  // Restore data from Google Drive
+  const handleRestoreFromDrive = (restored: {
+    contacts?: Contact[];
+    callHistory?: CallRecord[];
+    ringtoneConfig?: RingtoneConfig;
+  }) => {
+    if (restored.contacts) {
+      setContacts(restored.contacts);
+      saveContactsToStorage(restored.contacts);
+    }
+    if (restored.callHistory) {
+      setCallHistory(restored.callHistory);
+      localStorage.setItem(STORAGE_KEY_CALL_LOGS, JSON.stringify(restored.callHistory));
+    }
+    if (restored.ringtoneConfig) {
+      setRingtoneConfig(restored.ringtoneConfig);
+      localStorage.setItem(STORAGE_KEY_SETTINGS, JSON.stringify(restored.ringtoneConfig));
+    }
+  };
+
   return (
-    <div id="ciphercall-root" className="min-h-screen bg-[#09090b] text-zinc-100 font-sans antialiased flex flex-col selection:bg-emerald-500/30 selection:text-emerald-200">
+    <div id="talk-app-root" className="min-h-screen bg-[#09090b] text-zinc-100 font-sans antialiased flex flex-col selection:bg-emerald-500/30 selection:text-emerald-200">
       {/* Top Navbar */}
       <Navbar
         activeTab={activeNavTab}
         onSelectTab={setActiveNavTab}
         currentIdentity={identity}
         onOpenSettings={() => setIsSettingsOpen(true)}
+        onOpenDriveModal={() => setIsDriveModalOpen(true)}
         onQuickTestRing={() => {
           ringEngine.previewRingtone(ringtoneConfig.ringtoneType);
         }}
@@ -696,9 +799,25 @@ export default function App() {
         onSaveRingtoneConfig={(cfg) => {
           setRingtoneConfig(cfg);
           localStorage.setItem(STORAGE_KEY_SETTINGS, JSON.stringify(cfg));
+          triggerBackgroundDriveSync(contacts, callHistory, cfg);
         }}
         currentIdentity={identity}
         onSwitchIdentity={handleSwitchIdentity}
+        onOpenDriveModal={() => {
+          setIsSettingsOpen(false);
+          setIsDriveModalOpen(true);
+        }}
+      />
+
+      {/* Google Drive Storage & Sync Modal */}
+      <GoogleDriveModal
+        isOpen={isDriveModalOpen}
+        onClose={() => setIsDriveModalOpen(false)}
+        contacts={contacts}
+        callHistory={callHistory}
+        identity={identity}
+        ringtoneConfig={ringtoneConfig}
+        onRestoreData={handleRestoreFromDrive}
       />
     </div>
   );

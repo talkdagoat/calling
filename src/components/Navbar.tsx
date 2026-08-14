@@ -1,14 +1,16 @@
 import React from 'react';
 import { 
-  ShieldCheck, Users, Video, Clock, Settings, Bell, Lock, Smartphone, Laptop, Sparkles, Phone 
+  ShieldCheck, Users, Video, Clock, Settings, Bell, HardDrive, Smartphone, Laptop, Cloud, CheckCircle2 
 } from 'lucide-react';
 import { UserIdentity } from '../types';
+import { googleDriveService } from '../utils/googleDriveSync';
 
 interface NavbarProps {
   activeTab: 'contacts' | 'rooms' | 'history';
   onSelectTab: (tab: 'contacts' | 'rooms' | 'history') => void;
   currentIdentity: UserIdentity;
   onOpenSettings: () => void;
+  onOpenDriveModal: () => void;
   onQuickTestRing: () => void;
   isOnline: boolean;
   activeConnectedDevices: number;
@@ -19,10 +21,13 @@ export const Navbar: React.FC<NavbarProps> = ({
   onSelectTab,
   currentIdentity,
   onOpenSettings,
+  onOpenDriveModal,
   onQuickTestRing,
   isOnline,
   activeConnectedDevices,
 }) => {
+  const isDriveConnected = googleDriveService.isConnected();
+
   return (
     <header className="h-16 bg-[#121216]/90 border-b border-zinc-800/80 px-4 md:px-8 flex items-center justify-between sticky top-0 z-30 backdrop-blur-xl shadow-lg shadow-black/20">
       {/* Left: Brand Logo & E2EE Verified Indicator */}
@@ -33,12 +38,12 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <span className="text-base font-extrabold tracking-tight text-zinc-100">CipherCall</span>
+              <span className="text-base font-extrabold tracking-tight text-zinc-100">Talk</span>
               <span className="px-1.5 py-0.5 bg-emerald-950/90 border border-emerald-500/40 text-emerald-300 text-[10px] font-mono rounded-md shadow-xs">
                 E2EE
               </span>
             </div>
-            <p className="text-[10px] text-zinc-400 hidden sm:block tracking-wide">Zero-Knowledge Encrypted Calling</p>
+            <p className="text-[10px] text-zinc-400 hidden sm:block tracking-wide">Encrypted Calling • Drive Storage</p>
           </div>
         </div>
 
@@ -54,7 +59,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             }`}
           >
             <Users className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Contacts (JSON)</span>
+            <span>Contacts</span>
           </button>
 
           <button
@@ -80,13 +85,33 @@ export const Navbar: React.FC<NavbarProps> = ({
             }`}
           >
             <Clock className="w-3.5 h-3.5 text-indigo-400" />
-            <span>Call History & AI Minutes</span>
+            <span>Call History</span>
           </button>
         </nav>
       </div>
 
-      {/* Right: Active Device Identity & Quick Ring Test */}
-      <div className="flex items-center gap-3">
+      {/* Right: Google Drive Sync Pill & Device Settings */}
+      <div className="flex items-center gap-2 sm:gap-3">
+        {/* Google Drive Sync Pill */}
+        <button
+          id="nav-google-drive-sync-btn"
+          onClick={onOpenDriveModal}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium border transition-colors shadow-xs ${
+            isDriveConnected
+              ? 'bg-emerald-950/60 border-emerald-500/40 text-emerald-300 hover:bg-emerald-900/60'
+              : 'bg-[#18181d] border-zinc-800 text-zinc-300 hover:bg-[#222228] hover:text-white'
+          }`}
+          title="Google Drive Cloud Storage Sync"
+        >
+          <HardDrive className="w-3.5 h-3.5 text-emerald-400" />
+          <span className="hidden sm:inline">Google Drive</span>
+          {isDriveConnected ? (
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+          ) : (
+            <span className="px-1.5 py-0.2 text-[9px] bg-zinc-800 text-zinc-400 rounded-md">Offline</span>
+          )}
+        </button>
+
         {/* Quick Ring Test */}
         <button
           id="quick-test-ring-btn"
