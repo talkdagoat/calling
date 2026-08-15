@@ -1,11 +1,9 @@
-import React, { useState, useRef } from 'react';
+import React, { useState } from 'react';
 import { 
-  Users, Search, Phone, Video, UserPlus, Download, Upload, Code2, 
-  Star, ShieldCheck, Tag, MoreVertical, Edit2, Trash2, Check, AlertCircle,
-  FileJson, RefreshCw, Smartphone, Laptop, Lock
+  Users, Search, Phone, Video, UserPlus, Star, Edit2, Trash2, 
+  Lock, PhoneCall, Hash, X, Check, Smartphone
 } from 'lucide-react';
 import { Contact, CallType } from '../types';
-import { INITIAL_CONTACTS_JSON } from '../data/defaultContacts';
 
 interface ContactsManagerProps {
   contacts: Contact[];
@@ -18,34 +16,20 @@ export const ContactsManager: React.FC<ContactsManagerProps> = ({
   contacts,
   onSaveContacts,
   onInitiateCall,
-  onInviteToRoom,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
-  const [filterTag, setFilterTag] = useState<string>('all');
-  const [showOnlyFavorites, setShowOnlyFavorites] = useState(false);
   const [editingContact, setEditingContact] = useState<Contact | null>(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-  const [isJsonDrawerOpen, setIsJsonDrawerOpen] = useState(false);
-  const [jsonText, setJsonText] = useState('');
-  const [jsonError, setJsonError] = useState<string | null>(null);
-  const [copySuccess, setCopySuccess] = useState(false);
-
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  // Filter tags extracted from contacts
-  const allTags = Array.from(
-    new Set(contacts.flatMap(c => c.tags || []))
-  );
+  const [isDialpadOpen, setIsDialpadOpen] = useState(false);
+  const [dialNumber, setDialNumber] = useState('');
 
   const filteredContacts = contacts.filter(c => {
-    const matchesSearch = 
-      c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      c.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    const q = searchQuery.toLowerCase();
+    return (
+      c.name.toLowerCase().includes(q) ||
       c.phone.includes(searchQuery) ||
-      (c.role && c.role.toLowerCase().includes(searchQuery.toLowerCase()));
-    const matchesTag = filterTag === 'all' || (c.tags && c.tags.includes(filterTag));
-    const matchesFav = !showOnlyFavorites || c.isFavorite;
-    return matchesSearch && matchesTag && matchesFav;
+      (c.email && c.email.toLowerCase().includes(q))
+    );
   });
 
   // Toggle favorite
@@ -58,101 +42,39 @@ export const ContactsManager: React.FC<ContactsManagerProps> = ({
   // Delete contact
   const handleDeleteContact = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (confirm('Delete this contact from the JSON database?')) {
+    if (confirm('Delete this contact?')) {
       const updated = contacts.filter(c => c.id !== id);
       onSaveContacts(updated);
     }
-  };
-
-  // Open JSON Editor Drawer
-  const handleOpenJsonEditor = () => {
-    setJsonText(JSON.stringify(contacts, null, 2));
-    setJsonError(null);
-    setIsJsonDrawerOpen(true);
-  };
-
-  // Save JSON from raw editor
-  const handleSaveJsonEditor = () => {
-    try {
-      const parsed = JSON.parse(jsonText);
-      if (!Array.isArray(parsed)) {
-        throw new Error('Contacts JSON must be an array of contact objects.');
-      }
-      // Simple validation
-      for (const item of parsed) {
-        if (!item.id || !item.name) {
-          throw new Error('Every contact must contain at least an "id" and "name".');
-        }
-      }
-      onSaveContacts(parsed);
-      setIsJsonDrawerOpen(false);
-      setJsonError(null);
-    } catch (err: any) {
-      setJsonError(err.message || 'Invalid JSON syntax');
-    }
-  };
-
-  // Export Contacts as JSON file
-  const handleExportJson = () => {
-    const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(contacts, null, 2));
-    const downloadAnchor = document.createElement('a');
-    downloadAnchor.setAttribute('href', dataStr);
-    downloadAnchor.setAttribute('download', `ciphercall_contacts_${Date.now()}.json`);
-    document.body.appendChild(downloadAnchor);
-    downloadAnchor.click();
-    downloadAnchor.remove();
-  };
-
-  // Import Contacts from JSON file
-  const handleImportJsonFile = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      try {
-        const content = event.target?.result as string;
-        const parsed = JSON.parse(content);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          onSaveContacts(parsed);
-          alert(`Successfully imported ${parsed.length} contacts from JSON!`);
-        } else {
-          alert('Imported JSON must be a non-empty array of contacts.');
-        }
-      } catch (err) {
-        alert('Failed to parse uploaded JSON file. Please verify format.');
-      }
-    };
-    reader.readAsText(file);
   };
 
   // Save Add/Edit Contact
   const handleSaveContactModal = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
-    const id = (editingContact ? editingContact.id : `user_${Date.now()}`);
-    const name = formData.get('name') as string;
-    const email = formData.get('email') as string;
-    const phone = formData.get('phone') as string;
-    const role = formData.get('role') as string;
-    const avatar = (formData.get('avatar') as string) || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80';
-    const tagsStr = (formData.get('tags') as string) || '';
-    const tags = tagsStr.split(',').map(t => t.trim()).filter(Boolean);
-    const notes = formData.get('notes') as string;
+    const id = editingContact ? editingContact.id : `user_${Date.now()}`;
+    const name = (formData.get('name') as string).trim();
+    const phone = (formData.get('phone') as string).trim();
+    const email = (formData.get('email') as string)?.trim() || `${phone.replace(/[^0-9]/g, '') || 'user'}@talk.io`;
+    const role = (formData.get('role') as string)?.trim() || '';
+    const avatar = (formData.get('avatar') as string)?.trim() || '';
+    const notes = (formData.get('notes') as string)?.trim() || '';
+
+    const randomFp = `${Math.random().toString(36).substring(2, 6).toUpperCase()} ${Math.random().toString(36).substring(2, 6).toUpperCase()} ${Math.random().toString(36).substring(2, 6).toUpperCase()} ${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
 
     const updatedContact: Contact = {
       id,
       name,
-      email,
       phone,
+      email,
       role,
-      avatar,
+      avatar: avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=059669&color=ffffff&bold=true`,
       status: editingContact ? editingContact.status : 'online',
-      publicKeyFingerprint: editingContact?.publicKeyFingerprint || `${Math.random().toString(36).substring(2, 6).toUpperCase()} ${Math.random().toString(36).substring(2, 6).toUpperCase()} ${Math.random().toString(36).substring(2, 6).toUpperCase()} ${Math.random().toString(36).substring(2, 6).toUpperCase()}`,
+      publicKeyFingerprint: editingContact?.publicKeyFingerprint || randomFp,
       deviceList: ['Primary Device'],
       notes,
       isFavorite: editingContact ? editingContact.isFavorite : false,
-      tags,
+      tags: [],
     };
 
     if (editingContact) {
@@ -165,77 +87,77 @@ export const ContactsManager: React.FC<ContactsManagerProps> = ({
     setEditingContact(null);
   };
 
+  // Direct Dial from Keypad
+  const handleDirectDial = (type: CallType) => {
+    if (!dialNumber.trim()) return;
+    const cleanNum = dialNumber.trim();
+    // Find matching contact or create a temporary contact object for calling
+    const existing = contacts.find(c => c.phone === cleanNum || c.name.toLowerCase() === cleanNum.toLowerCase());
+    if (existing) {
+      onInitiateCall(existing, type);
+    } else {
+      const tempContact: Contact = {
+        id: `dial_${cleanNum.replace(/[^a-zA-Z0-9]/g, '') || Date.now()}`,
+        name: cleanNum,
+        phone: cleanNum,
+        role: '',
+        email: `${cleanNum}@talk.io`,
+        avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(cleanNum)}&background=059669&color=ffffff&bold=true`,
+        status: 'online',
+        publicKeyFingerprint: '99DA F102 77B4 4920 18EA',
+        deviceList: ['Direct Dial Device'],
+        isFavorite: false,
+        tags: [],
+      };
+      onInitiateCall(tempContact, type);
+    }
+  };
+
   return (
-    <div id="contacts-manager-view" className="w-full max-w-7xl mx-auto px-4 py-6">
+    <div id="contacts-manager-view" className="w-full max-w-5xl mx-auto px-4 py-6">
       {/* Header Bar */}
-      <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 mb-6">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
         <div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2.5">
             <div className="p-2 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-emerald-400">
-              <Users className="w-5 h-5" />
+              <PhoneCall className="w-5 h-5" />
             </div>
             <h1 className="text-2xl font-bold text-zinc-100 tracking-tight">
-              Encrypted JSON Directory
+              Contacts
             </h1>
-            <span className="px-2 py-0.5 bg-emerald-950/80 border border-emerald-500/40 text-emerald-300 text-xs font-mono rounded-full shadow-xs">
-              {contacts.length} Contacts
+            <span className="px-2.5 py-0.5 bg-emerald-950/80 border border-emerald-500/40 text-emerald-300 text-xs font-mono rounded-full shadow-xs">
+              {contacts.length} {contacts.length === 1 ? 'contact' : 'contacts'}
             </span>
           </div>
           <p className="text-xs text-zinc-400 mt-1">
-            Store, import, export, and call contacts securely with zero-knowledge E2EE key fingerprints.
+            End-to-end encrypted calling directly stored to your Google Drive.
           </p>
         </div>
 
-        {/* JSON Actions & Add Button */}
-        <div className="flex flex-wrap items-center gap-2">
-          {/* Direct Raw JSON Editor Drawer Button */}
+        {/* Action Buttons: Dial Keypad & Add Contact */}
+        <div className="flex items-center gap-2.5 w-full sm:w-auto">
+          {/* Dialpad Toggle */}
           <button
-            id="open-json-editor-btn"
-            onClick={handleOpenJsonEditor}
-            className="flex items-center gap-1.5 px-3 py-2 bg-[#18181d] hover:bg-[#222228] text-zinc-200 border border-zinc-800 rounded-xl text-xs font-medium transition-colors shadow-xs"
-            title="View and edit raw contacts JSON"
+            id="open-dialpad-btn"
+            onClick={() => setIsDialpadOpen(!isDialpadOpen)}
+            className={`flex-1 sm:flex-initial flex items-center justify-center gap-2 px-3.5 py-2.5 rounded-xl text-xs font-semibold border transition-colors shadow-xs ${
+              isDialpadOpen
+                ? 'bg-emerald-950/90 border-emerald-500/50 text-emerald-300'
+                : 'bg-[#18181d] hover:bg-[#222228] text-zinc-200 border-zinc-800'
+            }`}
           >
-            <FileJson className="w-4 h-4 text-emerald-400" />
-            <span>Raw JSON</span>
+            <Hash className="w-4 h-4 text-emerald-400" />
+            <span>{isDialpadOpen ? 'Hide Keypad' : 'Dial Number'}</span>
           </button>
 
-          {/* Export JSON Button */}
-          <button
-            id="export-contacts-json-btn"
-            onClick={handleExportJson}
-            className="flex items-center gap-1.5 px-3 py-2 bg-[#18181d] hover:bg-[#222228] text-zinc-200 border border-zinc-800 rounded-xl text-xs font-medium transition-colors shadow-xs"
-            title="Download contacts.json"
-          >
-            <Download className="w-4 h-4 text-teal-400" />
-            <span>Export JSON</span>
-          </button>
-
-          {/* Import JSON Button */}
-          <input
-            type="file"
-            ref={fileInputRef}
-            onChange={handleImportJsonFile}
-            accept=".json,application/json"
-            className="hidden"
-          />
-          <button
-            id="import-contacts-json-btn"
-            onClick={() => fileInputRef.current?.click()}
-            className="flex items-center gap-1.5 px-3 py-2 bg-[#18181d] hover:bg-[#222228] text-zinc-200 border border-zinc-800 rounded-xl text-xs font-medium transition-colors shadow-xs"
-            title="Upload contacts.json"
-          >
-            <Upload className="w-4 h-4 text-indigo-400" />
-            <span>Import JSON</span>
-          </button>
-
-          {/* Add New Contact Button */}
+          {/* Add Contact Button */}
           <button
             id="add-contact-btn"
             onClick={() => {
               setEditingContact(null);
               setIsAddModalOpen(true);
             }}
-            className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-semibold shadow-lg shadow-emerald-950/50 transition-colors"
+            className="flex-1 sm:flex-initial flex items-center justify-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold shadow-lg shadow-emerald-950/50 transition-colors"
           >
             <UserPlus className="w-4 h-4" />
             <span>Add Contact</span>
@@ -243,268 +165,226 @@ export const ContactsManager: React.FC<ContactsManagerProps> = ({
         </div>
       </div>
 
-      {/* Search and Filters Bar */}
-      <div className="bg-[#121216] border border-zinc-800/80 rounded-2xl p-4 mb-6 space-y-3 shadow-md">
-        <div className="flex flex-col sm:flex-row items-center gap-3">
-          {/* Search Bar */}
-          <div className="relative flex-1 w-full">
+      {/* Direct Dial Keypad Panel (WhatsApp Style) */}
+      {isDialpadOpen && (
+        <div className="bg-[#121216] border border-emerald-500/30 rounded-2xl p-5 mb-6 shadow-xl shadow-black/40 animate-fade-in">
+          <div className="max-w-md mx-auto">
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-xs font-bold text-zinc-300 flex items-center gap-1.5">
+                <Smartphone className="w-4 h-4 text-emerald-400" />
+                Direct Phone / ID Dialer
+              </span>
+              <button
+                onClick={() => setIsDialpadOpen(false)}
+                className="text-zinc-500 hover:text-zinc-300"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="relative mb-4">
+              <input
+                id="dialpad-number-input"
+                type="text"
+                value={dialNumber}
+                onChange={(e) => setDialNumber(e.target.value)}
+                placeholder="Type phone number or ID to call..."
+                className="w-full bg-[#0c0c0e] border border-zinc-800 rounded-xl px-4 py-3 text-lg font-mono text-center text-emerald-300 focus:outline-none focus:border-emerald-500 tracking-wider shadow-inner"
+              />
+              {dialNumber && (
+                <button
+                  onClick={() => setDialNumber('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300 p-1"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+
+            {/* Quick Keypad Grid */}
+            <div className="grid grid-cols-3 gap-2 mb-4">
+              {['1', '2', '3', '4', '5', '6', '7', '8', '9', '*', '0', '#'].map((digit) => (
+                <button
+                  key={digit}
+                  onClick={() => setDialNumber((prev) => prev + digit)}
+                  className="py-3 bg-[#18181d] hover:bg-[#222228] active:bg-emerald-950/60 border border-zinc-800 text-zinc-200 hover:text-white rounded-xl text-base font-bold transition-colors font-mono"
+                >
+                  {digit}
+                </button>
+              ))}
+            </div>
+
+            {/* Call Action Buttons */}
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                id="dialpad-audio-call-btn"
+                onClick={() => handleDirectDial('audio')}
+                disabled={!dialNumber.trim()}
+                className="py-3 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 disabled:hover:bg-emerald-600 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-lg shadow-emerald-950/50 transition-all active:scale-98"
+              >
+                <Phone className="w-4 h-4" />
+                <span>Call Audio</span>
+              </button>
+              <button
+                id="dialpad-video-call-btn"
+                onClick={() => handleDirectDial('video')}
+                disabled={!dialNumber.trim()}
+                className="py-3 bg-teal-600 hover:bg-teal-500 disabled:opacity-40 disabled:hover:bg-teal-600 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-lg shadow-teal-950/50 transition-all active:scale-98"
+              >
+                <Video className="w-4 h-4" />
+                <span>Call Video</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Search Input (Only shown if contacts exist) */}
+      {contacts.length > 0 && (
+        <div className="bg-[#121216] border border-zinc-800/80 rounded-2xl p-3 mb-5 shadow-md">
+          <div className="relative">
             <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
             <input
               id="contacts-search-input"
               type="text"
-              placeholder="Search by name, role, email, phone, or fingerprint..."
+              placeholder="Search contacts by name or phone number..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full bg-[#0c0c0e] border border-zinc-800 rounded-xl pl-10 pr-4 py-2.5 text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-emerald-500 transition-colors"
+              className="w-full bg-[#0c0c0e] border border-zinc-800 rounded-xl pl-10 pr-4 py-2 text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-emerald-500 transition-colors"
             />
           </div>
-
-          {/* Favorite Toggle */}
-          <button
-            id="toggle-favorites-filter-btn"
-            onClick={() => setShowOnlyFavorites(!showOnlyFavorites)}
-            className={`flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-xs font-medium border transition-colors ${
-              showOnlyFavorites
-                ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
-                : 'bg-[#0c0c0e] text-zinc-400 border-zinc-800 hover:text-white'
-            }`}
-          >
-            <Star className={`w-3.5 h-3.5 ${showOnlyFavorites ? 'fill-amber-400 text-amber-400' : ''}`} />
-            <span>Favorites</span>
-          </button>
         </div>
+      )}
 
-        {/* Tag Pills */}
-        <div className="flex items-center gap-2 overflow-x-auto pb-1 text-xs">
-          <span className="text-zinc-500 flex items-center gap-1 whitespace-nowrap">
-            <Tag className="w-3 h-3" /> Filter:
-          </span>
-          <button
-            onClick={() => setFilterTag('all')}
-            className={`px-2.5 py-1 rounded-lg transition-colors whitespace-nowrap ${
-              filterTag === 'all'
-                ? 'bg-emerald-600 text-white font-medium shadow-xs'
-                : 'bg-[#18181d] text-zinc-400 hover:text-white border border-zinc-800'
-            }`}
-          >
-            All Tags
-          </button>
-          {allTags.map(tag => (
-            <button
-              key={tag}
-              onClick={() => setFilterTag(tag)}
-              className={`px-2.5 py-1 rounded-lg transition-colors whitespace-nowrap ${
-                filterTag === tag
-                  ? 'bg-emerald-600 text-white font-medium shadow-xs'
-                  : 'bg-[#18181d] text-zinc-400 hover:text-white border border-zinc-800'
-              }`}
+      {/* Contacts List (WhatsApp / Phone Calls Style) */}
+      {filteredContacts.length > 0 ? (
+        <div className="space-y-2.5">
+          {filteredContacts.map(contact => (
+            <div
+              key={contact.id}
+              id={`contact-row-${contact.id}`}
+              className="bg-[#121216] border border-zinc-800/80 hover:border-emerald-500/30 rounded-2xl p-4 flex items-center justify-between gap-4 transition-all duration-150 shadow-md shadow-black/20 group"
             >
-              {tag}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Contacts Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {filteredContacts.map(contact => (
-          <div
-            key={contact.id}
-            id={`contact-card-${contact.id}`}
-            className="bg-[#121216] border border-zinc-800/80 hover:border-emerald-500/40 rounded-2xl p-5 shadow-lg shadow-black/30 transition-all duration-200 hover:-translate-y-0.5 flex flex-col justify-between group"
-          >
-            <div>
-              {/* Top Row: Avatar, Status, Favorite */}
-              <div className="flex items-start justify-between gap-3 mb-3">
-                <div className="relative">
+              {/* Left: Avatar + Name + Phone */}
+              <div className="flex items-center gap-3.5 min-w-0">
+                <div className="relative shrink-0">
                   <img
                     src={contact.avatar}
                     alt={contact.name}
-                    className="w-14 h-14 rounded-2xl object-cover border border-zinc-700/80 shadow-md"
+                    className="w-12 h-12 rounded-2xl object-cover border border-zinc-750/80 shadow-md"
                   />
-                  {/* Status Dot */}
                   <span
                     className={`absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full border-2 border-[#121216] ${
                       contact.status === 'online'
                         ? 'bg-emerald-500 shadow-xs shadow-emerald-500/50'
-                        : contact.status === 'in-call'
-                        ? 'bg-amber-500 animate-pulse'
                         : 'bg-zinc-500'
                     }`}
-                    title={`Status: ${contact.status}`}
                   />
                 </div>
 
-                <div className="flex items-center gap-1">
-                  <button
-                    onClick={(e) => handleToggleFavorite(contact.id, e)}
-                    className="p-1.5 text-zinc-500 hover:text-amber-400 rounded-lg hover:bg-[#1c1c22] transition-colors"
-                  >
-                    <Star className={`w-4 h-4 ${contact.isFavorite ? 'fill-amber-400 text-amber-400' : ''}`} />
-                  </button>
-                  <button
-                    onClick={() => {
-                      setEditingContact(contact);
-                      setIsAddModalOpen(true);
-                    }}
-                    className="p-1.5 text-zinc-500 hover:text-zinc-200 rounded-lg hover:bg-[#1c1c22] transition-colors"
-                    title="Edit Contact"
-                  >
-                    <Edit2 className="w-3.5 h-3.5" />
-                  </button>
-                  <button
-                    onClick={(e) => handleDeleteContact(contact.id, e)}
-                    className="p-1.5 text-zinc-500 hover:text-red-400 rounded-lg hover:bg-[#1c1c22] transition-colors"
-                    title="Delete Contact"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-sm font-bold text-zinc-100 truncate group-hover:text-emerald-300 transition-colors">
+                      {contact.name}
+                    </h3>
+                    {contact.isFavorite && (
+                      <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400 shrink-0" />
+                    )}
+                  </div>
+                  <div className="text-xs text-zinc-400 font-mono mt-0.5 truncate">
+                    {contact.phone}
+                    {contact.role && (
+                      <span className="text-zinc-500 ml-2 font-sans">· {contact.role}</span>
+                    )}
+                  </div>
                 </div>
               </div>
 
-              {/* Name & Role */}
-              <h3 className="text-base font-bold text-zinc-100 group-hover:text-emerald-300 transition-colors">
-                {contact.name}
-              </h3>
-              <p className="text-xs text-zinc-400 mb-2">
-                {contact.role || 'CipherCall Member'}
-              </p>
+              {/* Right: Quick Action Calling Buttons */}
+              <div className="flex items-center gap-1.5 shrink-0">
+                {/* 1:1 Audio Call Button */}
+                <button
+                  id={`call-audio-${contact.id}`}
+                  onClick={() => onInitiateCall(contact, 'audio')}
+                  className="p-2.5 bg-emerald-950/70 hover:bg-emerald-600 text-emerald-400 hover:text-white border border-emerald-500/30 hover:border-emerald-600 rounded-xl transition-all active:scale-95 shadow-xs flex items-center gap-1 text-xs font-semibold"
+                  title="Start Audio Call"
+                >
+                  <Phone className="w-4 h-4" />
+                </button>
 
-              {/* Phone & Email */}
-              <div className="space-y-1 text-xs text-zinc-400 font-mono mb-3">
-                <div className="truncate text-zinc-300">{contact.phone}</div>
-                <div className="truncate text-zinc-500">{contact.email}</div>
+                {/* HD Video Call Button */}
+                <button
+                  id={`call-video-${contact.id}`}
+                  onClick={() => onInitiateCall(contact, 'video')}
+                  className="p-2.5 bg-teal-950/70 hover:bg-teal-600 text-teal-300 hover:text-white border border-teal-500/30 hover:border-teal-600 rounded-xl transition-all active:scale-95 shadow-xs flex items-center gap-1 text-xs font-semibold"
+                  title="Start Video Call"
+                >
+                  <Video className="w-4 h-4" />
+                </button>
+
+                {/* Edit Contact */}
+                <button
+                  onClick={() => {
+                    setEditingContact(contact);
+                    setIsAddModalOpen(true);
+                  }}
+                  className="p-2 text-zinc-500 hover:text-zinc-200 rounded-xl hover:bg-[#18181d] transition-colors"
+                  title="Edit"
+                >
+                  <Edit2 className="w-3.5 h-3.5" />
+                </button>
+
+                {/* Delete Contact */}
+                <button
+                  onClick={(e) => handleDeleteContact(contact.id, e)}
+                  className="p-2 text-zinc-500 hover:text-red-400 rounded-xl hover:bg-[#18181d] transition-colors"
+                  title="Delete"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
               </div>
-
-              {/* Security Key Fingerprint Badge */}
-              <div className="bg-[#0c0c0e] border border-zinc-800/90 rounded-xl p-2 mb-3 shadow-inner">
-                <div className="flex items-center justify-between text-[10px] text-zinc-500 mb-0.5">
-                  <span className="flex items-center gap-1 font-semibold text-emerald-400">
-                    <Lock className="w-2.5 h-2.5" /> E2EE Key Fingerprint
-                  </span>
-                  <span>SHA-256</span>
-                </div>
-                <code className="text-[11px] font-mono text-emerald-300/90 block truncate">
-                  {contact.publicKeyFingerprint}
-                </code>
-              </div>
-
-              {/* Tags */}
-              {contact.tags && contact.tags.length > 0 && (
-                <div className="flex flex-wrap gap-1 mb-4">
-                  {contact.tags.map(t => (
-                    <span key={t} className="px-2 py-0.5 bg-[#1a1a20] border border-zinc-800 text-zinc-400 rounded-md text-[10px]">
-                      #{t}
-                    </span>
-                  ))}
-                </div>
-              )}
             </div>
-
-            {/* Calling Action Buttons (1-Click Call) */}
-            <div className="grid grid-cols-2 gap-2 pt-3 border-t border-zinc-800/80">
-              {/* 1:1 Audio Call Button */}
-              <button
-                id={`call-audio-${contact.id}`}
-                onClick={() => onInitiateCall(contact, 'audio')}
-                className="flex items-center justify-center gap-1.5 py-2.5 px-3 bg-[#18181d] hover:bg-teal-600/25 text-zinc-200 hover:text-teal-300 border border-zinc-800 hover:border-teal-500/40 rounded-xl text-xs font-semibold transition-all active:scale-95 shadow-xs"
-              >
-                <Phone className="w-3.5 h-3.5 text-teal-400" />
-                <span>1:1 Audio</span>
-              </button>
-
-              {/* HD Video Call Button */}
-              <button
-                id={`call-video-${contact.id}`}
-                onClick={() => onInitiateCall(contact, 'video')}
-                className="flex items-center justify-center gap-1.5 py-2.5 px-3 bg-emerald-600/20 hover:bg-emerald-600 text-emerald-300 hover:text-white border border-emerald-500/40 hover:border-emerald-600 rounded-xl text-xs font-semibold transition-all active:scale-95 shadow-xs"
-              >
-                <Video className="w-3.5 h-3.5" />
-                <span>HD Video</span>
-              </button>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {filteredContacts.length === 0 && (
-        <div className="text-center py-16 bg-[#121216] border border-zinc-800 rounded-2xl shadow-md">
-          <Users className="w-10 h-10 text-zinc-600 mx-auto mb-3" />
-          <h3 className="text-base font-semibold text-zinc-100">No contacts found</h3>
-          <p className="text-xs text-zinc-400 max-w-sm mx-auto mt-1 mb-4">
-            No contacts matched your search query or active filter tags.
-          </p>
-          <button
-            onClick={() => {
-              setSearchQuery('');
-              setFilterTag('all');
-              setShowOnlyFavorites(false);
-            }}
-            className="px-4 py-2 bg-[#18181d] hover:bg-[#222228] border border-zinc-800 text-white rounded-xl text-xs font-medium"
-          >
-            Clear Filters
-          </button>
+          ))}
         </div>
-      )}
-
-      {/* Raw JSON Editor Drawer / Modal */}
-      {isJsonDrawerOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-xl animate-fade-in">
-          <div className="w-full max-w-3xl bg-[#121216] border border-zinc-700/80 rounded-3xl p-6 shadow-2xl text-zinc-100 max-h-[90vh] flex flex-col">
-            <div className="flex items-center justify-between pb-4 border-b border-zinc-800">
-              <div className="flex items-center gap-2">
-                <FileJson className="w-5 h-5 text-emerald-400" />
-                <h2 className="text-lg font-bold text-white">Contacts JSON Storage</h2>
-              </div>
-              <span className="text-xs text-zinc-400 font-mono">Format: JSON Array of Contacts</span>
-            </div>
-
-            {jsonError && (
-              <div className="mt-3 p-3 bg-red-950/80 border border-red-500/40 rounded-xl text-xs text-red-300 flex items-center gap-2">
-                <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
-                <span>{jsonError}</span>
-              </div>
-            )}
-
-            <div className="my-4 flex-1 min-h-[300px]">
-              <textarea
-                id="raw-json-textarea"
-                value={jsonText}
-                onChange={(e) => setJsonText(e.target.value)}
-                className="w-full h-80 bg-[#0c0c0e] border border-zinc-800 rounded-2xl p-4 font-mono text-xs text-emerald-300 focus:outline-none focus:border-emerald-500 resize-none shadow-inner"
-                spellCheck={false}
-              />
-            </div>
-
-            <div className="flex items-center justify-between pt-3 border-t border-zinc-800">
-              <button
-                onClick={() => {
-                  setJsonText(JSON.stringify(INITIAL_CONTACTS_JSON, null, 2));
-                  setJsonError(null);
-                }}
-                className="flex items-center gap-1 px-3 py-2 bg-[#18181d] hover:bg-[#222228] border border-zinc-800 text-zinc-300 rounded-xl text-xs font-medium"
-              >
-                <RefreshCw className="w-3.5 h-3.5" />
-                <span>Reset to Sample Directory</span>
-              </button>
-
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setIsJsonDrawerOpen(false)}
-                  className="px-4 py-2 bg-[#18181d] hover:bg-[#222228] border border-zinc-800 text-zinc-300 rounded-xl text-xs font-medium"
-                >
-                  Cancel
-                </button>
-                <button
-                  id="save-raw-json-btn"
-                  onClick={handleSaveJsonEditor}
-                  className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold shadow-lg shadow-emerald-950/50"
-                >
-                  Save JSON
-                </button>
-              </div>
-            </div>
+      ) : contacts.length === 0 ? (
+        /* Empty State: WhatsApp Calling Style */
+        <div className="text-center py-16 px-4 bg-[#121216] border border-zinc-800 rounded-3xl shadow-xl max-w-lg mx-auto my-8">
+          <div className="w-16 h-16 bg-emerald-950/80 border border-emerald-500/30 rounded-3xl flex items-center justify-center mx-auto mb-4 text-emerald-400 shadow-lg shadow-emerald-950/50">
+            <Users className="w-8 h-8" />
           </div>
+          <h2 className="text-lg font-bold text-zinc-100">No contacts added yet</h2>
+          <p className="text-xs text-zinc-400 max-w-sm mx-auto mt-1.5 mb-6 leading-relaxed">
+            Add people by name and phone number to start end-to-end encrypted voice and video calls. Your contacts are saved privately to your Google Drive.
+          </p>
+
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+            <button
+              id="empty-add-contact-btn"
+              onClick={() => {
+                setEditingContact(null);
+                setIsAddModalOpen(true);
+              }}
+              className="w-full sm:w-auto px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold shadow-lg shadow-emerald-950/50 flex items-center justify-center gap-2 transition-colors"
+            >
+              <UserPlus className="w-4 h-4" />
+              <span>Add First Contact</span>
+            </button>
+
+            <button
+              id="empty-open-dialpad-btn"
+              onClick={() => setIsDialpadOpen(true)}
+              className="w-full sm:w-auto px-5 py-2.5 bg-[#18181d] hover:bg-[#222228] border border-zinc-800 text-zinc-200 rounded-xl text-xs font-semibold flex items-center justify-center gap-2 transition-colors"
+            >
+              <Hash className="w-4 h-4 text-emerald-400" />
+              <span>Dial a Number Directly</span>
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="text-center py-12 bg-[#121216] border border-zinc-800 rounded-2xl">
+          <Search className="w-8 h-8 text-zinc-600 mx-auto mb-2" />
+          <h3 className="text-sm font-semibold text-zinc-200">No matching contacts</h3>
+          <p className="text-xs text-zinc-400 mt-1">No contact matches "{searchQuery}"</p>
         </div>
       )}
 
@@ -512,90 +392,56 @@ export const ContactsManager: React.FC<ContactsManagerProps> = ({
       {isAddModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-xl animate-fade-in">
           <div className="w-full max-w-md bg-[#121216] border border-zinc-750/80 rounded-3xl p-6 shadow-2xl text-zinc-100">
-            <h2 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
-              <UserPlus className="w-5 h-5 text-emerald-400" />
-              <span>{editingContact ? 'Edit Contact' : 'Add New Contact'}</span>
-            </h2>
+            <div className="flex items-center justify-between mb-4 pb-3 border-b border-zinc-800">
+              <h2 className="text-base font-bold text-white flex items-center gap-2">
+                <UserPlus className="w-5 h-5 text-emerald-400" />
+                <span>{editingContact ? 'Edit Contact' : 'New Contact'}</span>
+              </h2>
+              <button
+                onClick={() => {
+                  setIsAddModalOpen(false);
+                  setEditingContact(null);
+                }}
+                className="text-zinc-500 hover:text-zinc-300 p-1"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
 
-            <form onSubmit={handleSaveContactModal} className="space-y-3">
+            <form onSubmit={handleSaveContactModal} className="space-y-4">
               <div>
-                <label className="text-xs text-zinc-400 block mb-1">Full Name</label>
+                <label className="text-xs font-medium text-zinc-300 block mb-1">Contact Name *</label>
                 <input
                   name="name"
                   type="text"
                   required
+                  autoFocus
                   defaultValue={editingContact?.name || ''}
-                  placeholder="e.g. Satoshi Nakamoto"
-                  className="w-full bg-[#0c0c0e] border border-zinc-800 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500"
+                  placeholder="e.g. Sarah Jenkins"
+                  className="w-full bg-[#0c0c0e] border border-zinc-800 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500"
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="text-xs text-zinc-400 block mb-1">Phone / Extension</label>
-                  <input
-                    name="phone"
-                    type="text"
-                    required
-                    defaultValue={editingContact?.phone || ''}
-                    placeholder="+1 (555) 000-0000"
-                    className="w-full bg-[#0c0c0e] border border-zinc-800 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs text-zinc-400 block mb-1">Email</label>
-                  <input
-                    name="email"
-                    type="email"
-                    required
-                    defaultValue={editingContact?.email || ''}
-                    placeholder="user@domain.com"
-                    className="w-full bg-[#0c0c0e] border border-zinc-800 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500"
-                  />
-                </div>
+              <div>
+                <label className="text-xs font-medium text-zinc-300 block mb-1">Phone Number or ID *</label>
+                <input
+                  name="phone"
+                  type="text"
+                  required
+                  defaultValue={editingContact?.phone || ''}
+                  placeholder="+1 (555) 123-4567 or user_id"
+                  className="w-full bg-[#0c0c0e] border border-zinc-800 rounded-xl px-3.5 py-2.5 text-sm font-mono text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500"
+                />
               </div>
 
               <div>
-                <label className="text-xs text-zinc-400 block mb-1">Role / Department</label>
+                <label className="text-xs font-medium text-zinc-400 block mb-1">Note / Description (Optional)</label>
                 <input
                   name="role"
                   type="text"
                   defaultValue={editingContact?.role || ''}
-                  placeholder="e.g. Lead Cryptographer"
-                  className="w-full bg-[#0c0c0e] border border-zinc-800 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500"
-                />
-              </div>
-
-              <div>
-                <label className="text-xs text-zinc-400 block mb-1">Avatar Image URL</label>
-                <input
-                  name="avatar"
-                  type="url"
-                  defaultValue={editingContact?.avatar || ''}
-                  placeholder="https://images.unsplash.com/..."
-                  className="w-full bg-[#0c0c0e] border border-zinc-800 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500"
-                />
-              </div>
-
-              <div>
-                <label className="text-xs text-zinc-400 block mb-1">Tags (Comma-separated)</label>
-                <input
-                  name="tags"
-                  type="text"
-                  defaultValue={editingContact?.tags?.join(', ') || ''}
-                  placeholder="Security, Core Team, Design"
-                  className="w-full bg-[#0c0c0e] border border-zinc-800 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500"
-                />
-              </div>
-
-              <div>
-                <label className="text-xs text-zinc-400 block mb-1">Notes</label>
-                <textarea
-                  name="notes"
-                  rows={2}
-                  defaultValue={editingContact?.notes || ''}
-                  placeholder="Custom notes or cryptographic identity details..."
-                  className="w-full bg-[#0c0c0e] border border-zinc-800 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500 resize-none"
+                  placeholder="e.g. Work, Family, Team Lead"
+                  className="w-full bg-[#0c0c0e] border border-zinc-800 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500"
                 />
               </div>
 

@@ -326,17 +326,10 @@ export const GoogleDriveModal: React.FC<GoogleDriveModalProps> = ({
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-between pt-3 border-t border-zinc-800">
-          <button
-            onClick={handleExportLocalJson}
-            className="px-3.5 py-1.5 text-xs text-zinc-400 hover:text-white flex items-center gap-1.5 transition-colors"
-          >
-            <Download className="w-3.5 h-3.5" />
-            <span>Download JSON File</span>
-          </button>
+        <div className="flex items-center justify-end pt-3 border-t border-zinc-800">
           <button
             onClick={onClose}
-            className="px-5 py-2 bg-[#18181d] hover:bg-[#222228] border border-zinc-800 text-white rounded-xl text-xs font-semibold transition-colors"
+            className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-semibold transition-colors"
           >
             Done
           </button>

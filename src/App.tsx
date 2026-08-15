@@ -38,34 +38,7 @@ export default function App() {
       const raw = localStorage.getItem(STORAGE_KEY_CALL_LOGS);
       if (raw) return JSON.parse(raw);
     } catch (e) {}
-    return [
-      {
-        id: 'hist_sample_1',
-        contactId: 'user_alex_chen',
-        contactName: 'Alex Chen',
-        contactAvatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
-        contactPhone: '+1 (555) 234-8901',
-        type: 'audio',
-        direction: 'incoming',
-        timestamp: 'Today at 10:45 AM',
-        duration: 245,
-        e2eeVerified: true,
-        notes: 'Discussed ECDH P-256 key agreement and Google Drive sync.',
-      },
-      {
-        id: 'hist_sample_2',
-        contactId: 'user_elena_rostova',
-        contactName: 'Dr. Elena Rostova',
-        contactAvatar: 'https://images.unsplash.com/photo-1580489944761-15a19d654956?w=150&auto=format&fit=crop&q=80',
-        contactPhone: '+1 (555) 389-4029',
-        type: 'video',
-        direction: 'outgoing',
-        timestamp: 'Yesterday at 3:12 PM',
-        duration: 890,
-        e2eeVerified: true,
-        notes: 'Demonstrated group video conference & screen share mesh routing.',
-      },
-    ];
+    return [];
   });
 
   // Current User Identity (Multi-device profile)

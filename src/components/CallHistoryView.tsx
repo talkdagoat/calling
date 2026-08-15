@@ -46,13 +46,6 @@ export const CallHistoryView: React.FC<CallHistoryViewProps> = ({
         </div>
 
         <div className="flex items-center gap-2">
-          <button
-            onClick={handleExportLogsJson}
-            className="flex items-center gap-1.5 px-3 py-2 bg-[#18181d] hover:bg-[#222228] text-zinc-200 border border-zinc-800 rounded-xl text-xs font-medium transition-colors shadow-xs"
-          >
-            <Download className="w-4 h-4 text-emerald-400" />
-            <span>Export Logs (JSON)</span>
-          </button>
           {callRecords.length > 0 && (
             <button
               onClick={() => {
