@@ -1,19 +1,16 @@
 import React from 'react';
 import { 
-  ShieldCheck, Users, Video, Clock, Settings, Bell, HardDrive, Smartphone, Laptop, Cloud, CheckCircle2 
+  ShieldCheck, Users, Clock, Settings, HardDrive, CheckCircle2 
 } from 'lucide-react';
 import { UserIdentity } from '../types';
-import { googleDriveService } from '../utils/googleDriveSync';
 
 interface NavbarProps {
-  activeTab: 'contacts' | 'rooms' | 'history';
-  onSelectTab: (tab: 'contacts' | 'rooms' | 'history') => void;
+  activeTab: 'contacts' | 'history';
+  onSelectTab: (tab: 'contacts' | 'history') => void;
   currentIdentity: UserIdentity;
   onOpenSettings: () => void;
-  onOpenDriveModal: () => void;
-  onQuickTestRing: () => void;
+  onQuickTestRing?: () => void;
   isOnline: boolean;
-  activeConnectedDevices: number;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -21,16 +18,11 @@ export const Navbar: React.FC<NavbarProps> = ({
   onSelectTab,
   currentIdentity,
   onOpenSettings,
-  onOpenDriveModal,
-  onQuickTestRing,
   isOnline,
-  activeConnectedDevices,
 }) => {
-  const isDriveConnected = googleDriveService.isConnected();
-
   return (
     <header className="h-16 bg-[#121216]/90 border-b border-zinc-800/80 px-4 md:px-8 flex items-center justify-between sticky top-0 z-30 backdrop-blur-xl shadow-lg shadow-black/20">
-      {/* Left: Brand Logo & E2EE Verified Indicator */}
+      {/* Left: Brand Logo */}
       <div className="flex items-center gap-6">
         <div className="flex items-center gap-2.5">
           <div className="p-2 bg-gradient-to-tr from-emerald-600 to-teal-500 rounded-xl text-zinc-950 shadow-md shadow-emerald-950/60 ring-1 ring-emerald-400/30">
@@ -38,21 +30,21 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <span className="text-base font-extrabold tracking-tight text-zinc-100">Talk</span>
+              <span className="text-base font-extrabold tracking-tight text-white">Talk</span>
               <span className="px-1.5 py-0.5 bg-emerald-950/90 border border-emerald-500/40 text-emerald-300 text-[10px] font-mono rounded-md shadow-xs">
                 E2EE
               </span>
             </div>
-            <p className="text-[10px] text-zinc-400 hidden sm:block tracking-wide">Encrypted Calling • Drive Storage</p>
+            <p className="text-[10px] text-zinc-400 hidden sm:block tracking-wide">Encrypted Calling</p>
           </div>
         </div>
 
-        {/* Center Tabs */}
-        <nav className="hidden md:flex items-center gap-1 bg-[#0c0c0e] p-1 rounded-2xl border border-zinc-800/90 shadow-inner">
+        {/* Center Tabs: Contacts & History */}
+        <nav className="flex items-center gap-1 bg-[#0c0c0e] p-1 rounded-2xl border border-zinc-800/90 shadow-inner">
           <button
             id="nav-tab-contacts"
             onClick={() => onSelectTab('contacts')}
-            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all ${
+            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
               activeTab === 'contacts'
                 ? 'bg-[#1e1e24] text-white shadow-md border border-zinc-700/80'
                 : 'text-zinc-400 hover:text-zinc-200'
@@ -63,22 +55,9 @@ export const Navbar: React.FC<NavbarProps> = ({
           </button>
 
           <button
-            id="nav-tab-rooms"
-            onClick={() => onSelectTab('rooms')}
-            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all ${
-              activeTab === 'rooms'
-                ? 'bg-[#1e1e24] text-white shadow-md border border-zinc-700/80'
-                : 'text-zinc-400 hover:text-zinc-200'
-            }`}
-          >
-            <Video className="w-3.5 h-3.5 text-teal-400" />
-            <span>Group Video Rooms</span>
-          </button>
-
-          <button
             id="nav-tab-history"
             onClick={() => onSelectTab('history')}
-            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all ${
+            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
               activeTab === 'history'
                 ? 'bg-[#1e1e24] text-white shadow-md border border-zinc-700/80'
                 : 'text-zinc-400 hover:text-zinc-200'
@@ -90,44 +69,23 @@ export const Navbar: React.FC<NavbarProps> = ({
         </nav>
       </div>
 
-      {/* Right: Google Drive Sync Pill & Device Settings */}
+      {/* Right: Cloud Sync Status & User Account Profile */}
       <div className="flex items-center gap-2 sm:gap-3">
-        {/* Google Drive Sync Pill */}
-        <button
-          id="nav-google-drive-sync-btn"
-          onClick={onOpenDriveModal}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium border transition-colors shadow-xs ${
-            isDriveConnected
-              ? 'bg-emerald-950/60 border-emerald-500/40 text-emerald-300 hover:bg-emerald-900/60'
-              : 'bg-[#18181d] border-zinc-800 text-zinc-300 hover:bg-[#222228] hover:text-white'
-          }`}
-          title="Google Drive Cloud Storage Sync"
+        {/* Central Cloud Storage Pill */}
+        <div
+          id="nav-cloud-sync-pill"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium border bg-emerald-950/40 border-emerald-500/30 text-emerald-300 shadow-xs"
         >
           <HardDrive className="w-3.5 h-3.5 text-emerald-400" />
-          <span className="hidden sm:inline">Google Drive</span>
-          {isDriveConnected ? (
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-          ) : (
-            <span className="px-1.5 py-0.2 text-[9px] bg-zinc-800 text-zinc-400 rounded-md">Offline</span>
-          )}
-        </button>
+          <span className="hidden sm:inline">Drive Storage</span>
+          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+        </div>
 
-        {/* Quick Ring Test */}
-        <button
-          id="quick-test-ring-btn"
-          onClick={onQuickTestRing}
-          className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 bg-[#18181d] hover:bg-[#222228] text-zinc-300 hover:text-white rounded-xl text-xs font-medium border border-zinc-800 transition-colors shadow-xs"
-          title="Test synthesized incoming call ringtone on this device"
-        >
-          <Bell className="w-3.5 h-3.5 text-emerald-400" />
-          <span>Test Ring</span>
-        </button>
-
-        {/* User Identity Profile Card */}
+        {/* User Account Profile Button */}
         <button
           id="open-device-settings-btn"
           onClick={onOpenSettings}
-          className="flex items-center gap-2.5 p-1.5 pr-3 bg-[#0c0c0e] hover:bg-[#18181d] border border-zinc-800/90 rounded-2xl transition-colors group shadow-xs"
+          className="flex items-center gap-2.5 p-1.5 pr-3 bg-[#0c0c0e] hover:bg-[#18181d] border border-zinc-800/90 hover:border-zinc-700 rounded-2xl transition-colors group shadow-xs cursor-pointer"
         >
           <div className="relative">
             <img
@@ -142,12 +100,12 @@ export const Navbar: React.FC<NavbarProps> = ({
             />
           </div>
 
-          <div className="text-left hidden sm:block">
+          <div className="text-left">
             <div className="text-xs font-bold text-zinc-200 group-hover:text-emerald-300 transition-colors leading-tight">
-              {currentIdentity.name.split(' ')[0]}
+              {currentIdentity.name}
             </div>
-            <div className="text-[10px] text-zinc-400 font-mono truncate max-w-[120px]">
-              {currentIdentity.deviceName}
+            <div className="text-[10px] text-zinc-400 font-mono">
+              Online
             </div>
           </div>
 

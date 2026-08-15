@@ -1,7 +1,7 @@
 import React from 'react';
 import { 
   PhoneIncoming, PhoneOutgoing, PhoneMissed, Video, Phone, ShieldCheck, 
-  Download, Trash2, Clock, Calendar
+  Trash2, Clock, Calendar
 } from 'lucide-react';
 import { CallRecord, CallType, Contact } from '../types';
 
@@ -24,38 +24,25 @@ export const CallHistoryView: React.FC<CallHistoryViewProps> = ({
     return `${m}m ${s}s`;
   };
 
-  const handleExportLogsJson = () => {
-    const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(callRecords, null, 2));
-    const downloadAnchor = document.createElement('a');
-    downloadAnchor.setAttribute('href', dataStr);
-    downloadAnchor.setAttribute('download', `talk_call_history_${Date.now()}.json`);
-    document.body.appendChild(downloadAnchor);
-    downloadAnchor.click();
-    downloadAnchor.remove();
-  };
-
   return (
-    <div id="call-history-view" className="w-full max-w-7xl mx-auto px-4 py-6">
+    <div id="call-history-view" className="w-full max-w-4xl mx-auto px-4 py-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-zinc-100 tracking-tight">Call History</h1>
+          <h1 className="text-xl font-bold text-white tracking-tight">Call History</h1>
           <p className="text-xs text-zinc-400">
-            Encrypted call records, duration logs, and caller details synced with Google Drive.
+            Encrypted call records and duration logs
           </p>
         </div>
 
         <div className="flex items-center gap-2">
           {callRecords.length > 0 && (
             <button
-              onClick={() => {
-                if (confirm('Clear all call history records?')) {
-                  onClearHistory();
-                }
-              }}
-              className="flex items-center gap-1.5 px-3 py-2 bg-[#18181d] hover:bg-red-950/60 text-zinc-400 hover:text-red-300 border border-zinc-800 hover:border-red-500/30 rounded-xl text-xs font-medium transition-colors shadow-xs"
+              id="clear-all-call-history-btn"
+              onClick={onClearHistory}
+              className="flex items-center gap-1.5 px-3.5 py-2 bg-[#18181d] hover:bg-red-950/60 text-zinc-300 hover:text-red-300 border border-zinc-800 hover:border-red-500/30 rounded-xl text-xs font-semibold transition-all shadow-xs cursor-pointer active:scale-98"
             >
-              <Trash2 className="w-4 h-4" />
+              <Trash2 className="w-4 h-4 text-red-400" />
               <span>Clear History</span>
             </button>
           )}
@@ -73,9 +60,9 @@ export const CallHistoryView: React.FC<CallHistoryViewProps> = ({
             >
               {/* Left Info */}
               <div className="flex items-center gap-3.5">
-                <div className="relative">
+                <div className="relative shrink-0">
                   <img
-                    src={record.contactAvatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'}
+                    src={record.contactAvatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(record.contactName)}&background=059669&color=ffffff&bold=true`}
                     alt={record.contactName}
                     className="w-12 h-12 rounded-xl object-cover border border-zinc-750/80 shadow-md"
                   />
@@ -95,7 +82,7 @@ export const CallHistoryView: React.FC<CallHistoryViewProps> = ({
                     <h3 className="text-sm font-bold text-zinc-100">{record.contactName}</h3>
                     {record.e2eeVerified && (
                       <span className="px-2 py-0.5 bg-emerald-950/80 border border-emerald-500/30 text-emerald-300 text-[10px] font-mono rounded-md flex items-center gap-1 shadow-xs">
-                        <ShieldCheck className="w-3 h-3" /> E2EE Verified
+                        <ShieldCheck className="w-3 h-3" /> Encrypted
                       </span>
                     )}
                   </div>
@@ -118,17 +105,17 @@ export const CallHistoryView: React.FC<CallHistoryViewProps> = ({
                 {/* Redial Audio */}
                 <button
                   onClick={() => onRedial(record.contactId, 'audio')}
-                  className="p-2.5 bg-[#18181d] hover:bg-[#222228] text-zinc-200 border border-zinc-800 rounded-xl transition-colors shadow-xs flex items-center gap-1.5 text-xs font-semibold"
-                  title="Redial 1:1 Audio"
+                  className="p-2.5 bg-[#18181d] hover:bg-[#222228] text-zinc-200 border border-zinc-800 rounded-xl transition-colors shadow-xs flex items-center gap-1.5 text-xs font-semibold cursor-pointer"
+                  title="Redial Audio"
                 >
-                  <Phone className="w-4 h-4 text-teal-400" />
+                  <Phone className="w-4 h-4 text-emerald-400" />
                   <span>Call Audio</span>
                 </button>
 
                 {/* Redial Video */}
                 <button
                   onClick={() => onRedial(record.contactId, 'video')}
-                  className="p-2.5 bg-emerald-600/20 hover:bg-emerald-600 text-emerald-300 hover:text-white rounded-xl border border-emerald-500/40 transition-colors shadow-xs flex items-center gap-1.5 text-xs font-semibold"
+                  className="p-2.5 bg-teal-950/60 hover:bg-teal-600 text-teal-300 hover:text-white rounded-xl border border-teal-500/30 transition-colors shadow-xs flex items-center gap-1.5 text-xs font-semibold cursor-pointer"
                   title="Redial HD Video"
                 >
                   <Video className="w-4 h-4" />
@@ -141,9 +128,9 @@ export const CallHistoryView: React.FC<CallHistoryViewProps> = ({
       ) : (
         <div className="text-center py-16 bg-[#121216] border border-zinc-800 rounded-2xl shadow-md">
           <Clock className="w-10 h-10 text-zinc-600 mx-auto mb-3" />
-          <h3 className="text-base font-semibold text-zinc-100">No call records yet</h3>
+          <h3 className="text-base font-semibold text-zinc-100">No call history</h3>
           <p className="text-xs text-zinc-400 max-w-sm mx-auto mt-1">
-            Initiate 1:1 audio or group video calls from the Contacts or Rooms tab. Calls will be recorded and synced with Google Drive.
+            Calls with your contacts will appear here.
           </p>
         </div>
       )}

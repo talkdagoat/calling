@@ -74,11 +74,8 @@ export const IncomingCallModal: React.FC<IncomingCallModalProps> = ({
         <h2 className="text-2xl font-bold tracking-tight text-white mb-1">
           {callerName}
         </h2>
-        <p className="text-zinc-400 text-sm mb-1">
-          {isGroup ? `Invited you to "${call.roomName || 'Group Video Conference'}"` : `Incoming ${call.type === 'video' ? 'Video' : '1:1 Audio'} Call`}
-        </p>
-        <p className="text-xs text-zinc-500 font-mono mb-4">
-          Via {callerDevice} • Fingerprint: {call.caller.publicKeyFingerprint.slice(0, 14)}...
+        <p className="text-zinc-400 text-sm mb-4">
+          {call.type === 'video' ? 'Incoming HD Video Call' : 'Incoming Encrypted Voice Call'}
         </p>
 
         {/* Audio Ringing Notice */}

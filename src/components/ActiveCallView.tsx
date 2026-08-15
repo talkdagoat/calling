@@ -183,8 +183,8 @@ export const ActiveCallView: React.FC<ActiveCallViewProps> = ({
             <h2 className="text-sm font-bold text-zinc-100 flex items-center gap-2">
               {targetName}
             </h2>
-            <span className="text-[11px] text-zinc-400 font-mono">
-              {call.type.toUpperCase()} • Room: #{call.roomId.slice(0, 12)}
+            <span className="text-[11px] text-zinc-400 font-medium">
+              {call.type === 'video' ? 'HD Video Call' : 'Encrypted Audio Call'}
             </span>
           </div>
         </div>
@@ -262,8 +262,8 @@ export const ActiveCallView: React.FC<ActiveCallViewProps> = ({
               <h1 className="text-2xl font-bold text-zinc-100 mb-1 tracking-tight">
                 {targetName}
               </h1>
-              <p className="text-xs text-zinc-400 font-mono mb-6">
-                1:1 High-Definition Opus Audio Channel • 48kHz
+              <p className="text-xs text-zinc-400 font-medium mb-6">
+                Direct End-to-End Encrypted Voice Channel
               </p>
 
               {/* Dynamic Soundwave Spectrum Visualizer */}

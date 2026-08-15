@@ -1,7 +1,8 @@
-import { Contact } from '../types';
+import { Contact, UserIdentity } from '../types';
 
 export const INITIAL_CONTACTS_JSON: Contact[] = [];
 
+export const STORAGE_KEY_USER_NAME = 'talk_account_user_name';
 export const STORAGE_KEY_CONTACTS = 'talk_user_contacts';
 export const STORAGE_KEY_IDENTITY = 'talk_user_identity';
 export const STORAGE_KEY_CALL_LOGS = 'talk_call_history';

@@ -6,7 +6,7 @@ import {
 import { 
   loadSavedContacts, saveContactsToStorage, STORAGE_KEY_CONTACTS, 
   STORAGE_KEY_CALL_LOGS, STORAGE_KEY_IDENTITY, STORAGE_KEY_SETTINGS,
-  INITIAL_CONTACTS_JSON
+  STORAGE_KEY_USER_NAME
 } from './data/defaultContacts';
 import { 
   generateIdentityKeyPair, generateSafetyNumber, KeyPairData 
@@ -17,17 +17,28 @@ import { googleDriveService, TalkDrivePayload } from './utils/googleDriveSync';
 import { notificationEngine } from './utils/notificationEngine';
 
 import { Navbar } from './components/Navbar';
+import { AccountSetupScreen } from './components/AccountSetupScreen';
 import { ContactsManager } from './components/ContactsManager';
-import { GroupRoomsManager } from './components/GroupRoomsManager';
 import { CallHistoryView } from './components/CallHistoryView';
 import { IncomingCallModal } from './components/IncomingCallModal';
 import { ActiveCallView } from './components/ActiveCallView';
-import { DeviceSettingsModal, PRESET_TEST_IDENTITIES } from './components/DeviceSettingsModal';
+import { DeviceSettingsModal } from './components/DeviceSettingsModal';
 import { GoogleDriveModal } from './components/GoogleDriveModal';
 
 export default function App() {
-  // Navigation
-  const [activeNavTab, setActiveNavTab] = useState<'contacts' | 'rooms' | 'history'>('contacts');
+  // Account Onboarding State
+  const [hasAccount, setHasAccount] = useState<boolean>(() => {
+    try {
+      const storedName = localStorage.getItem(STORAGE_KEY_USER_NAME);
+      const storedIdentity = localStorage.getItem(STORAGE_KEY_IDENTITY);
+      return !!(storedName || storedIdentity);
+    } catch (e) {
+      return false;
+    }
+  });
+
+  // Navigation: 'contacts' (Dial + Contacts) or 'history' (Calls)
+  const [activeNavTab, setActiveNavTab] = useState<'contacts' | 'history'>('contacts');
 
   // Contacts JSON State
   const [contacts, setContacts] = useState<Contact[]>(() => loadSavedContacts());
@@ -41,13 +52,35 @@ export default function App() {
     return [];
   });
 
-  // Current User Identity (Multi-device profile)
+  // Current User Identity (Created from user's custom name)
   const [identity, setIdentity] = useState<UserIdentity>(() => {
     try {
       const raw = localStorage.getItem(STORAGE_KEY_IDENTITY);
       if (raw) return JSON.parse(raw);
+      const name = localStorage.getItem(STORAGE_KEY_USER_NAME);
+      if (name) {
+        return {
+          id: `user_${name.toLowerCase().replace(/[^a-z0-9]/g, '_')}`,
+          name,
+          email: `${name.toLowerCase().replace(/[^a-z0-9]/g, '')}@talk.drive`,
+          phone: '',
+          avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=059669&color=ffffff&bold=true`,
+          deviceId: `device_${Math.random().toString(36).substring(2, 9)}`,
+          deviceName: 'Primary Device',
+          publicKeyFingerprint: '4E9A B7C2 91F0 33DA 8201',
+        };
+      }
     } catch (e) {}
-    return PRESET_TEST_IDENTITIES[0];
+    return {
+      id: 'user_default',
+      name: 'User',
+      email: 'user@talk.drive',
+      phone: '',
+      avatar: 'https://ui-avatars.com/api/?name=User&background=059669&color=ffffff&bold=true',
+      deviceId: 'device_primary',
+      deviceName: 'Primary Device',
+      publicKeyFingerprint: '4E9A B7C2 91F0 33DA 8201',
+    };
   });
 
   // Cryptographic Key Pair
@@ -81,30 +114,124 @@ export default function App() {
   const wsRef = useRef<WebSocket | null>(null);
   const callTimerRef = useRef<any>(null);
 
-  // Background auto-sync helper to Google Drive
-  const triggerBackgroundDriveSync = useCallback((
+  // Background auto-sync helper to Central Server Storage and Local Storage
+  const triggerCentralServerSync = useCallback((
     updatedContacts?: Contact[], 
     updatedHistory?: CallRecord[], 
-    updatedSettings?: RingtoneConfig
+    customIdentity?: UserIdentity
   ) => {
-    if (googleDriveService.isConnected() && googleDriveService.isAutoSyncEnabled()) {
-      const payload: TalkDrivePayload = {
-        version: '1.0.0',
-        lastSyncedAt: new Date().toISOString(),
-        user: {
-          name: identity.name,
-          deviceId: identity.deviceId,
-          publicKeyFingerprint: identity.publicKeyFingerprint,
-        },
-        contacts: updatedContacts || contacts,
-        callHistory: updatedHistory || callHistory,
-        settings: updatedSettings || ringtoneConfig,
-      };
-      googleDriveService.savePayloadToDrive(payload).catch((e) => {
-        console.warn('Background Drive sync deferred:', e);
+    const currentIdent = customIdentity || identity;
+    const toSyncContacts = updatedContacts !== undefined ? updatedContacts : contacts;
+    const toSyncHistory = updatedHistory !== undefined ? updatedHistory : callHistory;
+
+    fetch('/api/data/sync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        userId: currentIdent.id,
+        contacts: toSyncContacts,
+        callHistory: toSyncHistory,
+      }),
+    }).catch((e) => console.warn('Server sync deferred:', e));
+  }, [contacts, callHistory, identity]);
+
+  // Create or Login Account by Name
+  const handleCompleteAccountSetup = async (name: string) => {
+    const cleanName = name.trim();
+    const newIdentity: UserIdentity = {
+      id: `user_${cleanName.toLowerCase().replace(/[^a-z0-9]/g, '_')}`,
+      name: cleanName,
+      email: `${cleanName.toLowerCase().replace(/[^a-z0-9]/g, '')}@talk.io`,
+      phone: '',
+      avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(cleanName)}&background=059669&color=ffffff&bold=true`,
+      deviceId: `device_${Math.random().toString(36).substring(2, 9)}`,
+      deviceName: 'Primary Device',
+      publicKeyFingerprint: cryptoKeys?.fingerprint || '4E9A B7C2 91F0 33DA 8201',
+      publicKeyBase64: cryptoKeys?.publicKeyBase64,
+    };
+
+    try {
+      const res = await fetch('/api/users/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: cleanName,
+          avatar: newIdentity.avatar,
+          publicKeyFingerprint: newIdentity.publicKeyFingerprint,
+        }),
       });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.user?.id) {
+          newIdentity.id = data.user.id;
+        }
+      }
+
+      // Fetch user's existing contacts and history if any
+      const dataRes = await fetch(`/api/data/${newIdentity.id}`);
+      if (dataRes.ok) {
+        const serverData = await dataRes.json();
+        if (Array.isArray(serverData.contacts) && serverData.contacts.length > 0) {
+          setContacts(serverData.contacts);
+          saveContactsToStorage(serverData.contacts);
+        }
+        if (Array.isArray(serverData.callHistory) && serverData.callHistory.length > 0) {
+          setCallHistory(serverData.callHistory);
+          localStorage.setItem(STORAGE_KEY_CALL_LOGS, JSON.stringify(serverData.callHistory));
+        }
+      }
+    } catch (e) {
+      console.error('Registration server sync error:', e);
     }
-  }, [contacts, callHistory, identity, ringtoneConfig]);
+
+    localStorage.setItem(STORAGE_KEY_USER_NAME, cleanName);
+    localStorage.setItem(STORAGE_KEY_IDENTITY, JSON.stringify(newIdentity));
+    setIdentity(newIdentity);
+    setHasAccount(true);
+
+    triggerCentralServerSync(contacts, callHistory, newIdentity);
+  };
+
+  // Update Account Name
+  const handleUpdateIdentityName = async (newName: string) => {
+    const updated: UserIdentity = {
+      ...identity,
+      name: newName,
+      avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(newName)}&background=059669&color=ffffff&bold=true`,
+    };
+    try {
+      await fetch('/api/users/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: newName,
+          avatar: updated.avatar,
+          publicKeyFingerprint: updated.publicKeyFingerprint,
+        }),
+      });
+    } catch (e) {}
+
+    localStorage.setItem(STORAGE_KEY_USER_NAME, newName);
+    localStorage.setItem(STORAGE_KEY_IDENTITY, JSON.stringify(updated));
+    setIdentity(updated);
+    triggerCentralServerSync(contacts, callHistory, updated);
+  };
+
+  // Log out / Switch Account
+  const handleLogOut = () => {
+    localStorage.removeItem(STORAGE_KEY_USER_NAME);
+    localStorage.removeItem(STORAGE_KEY_IDENTITY);
+    setHasAccount(false);
+  };
+
+  // Reset All Data & Accounts
+  const handleResetAllData = () => {
+    localStorage.clear();
+    setContacts([]);
+    setCallHistory([]);
+    setHasAccount(false);
+  };
+
 
   // Initialize Web Crypto keys, Service Worker & Google Drive data on startup
   useEffect(() => {
@@ -158,18 +285,18 @@ export default function App() {
     }
   }, []);
 
-  // Save contacts updates to localStorage and Google Drive
+  // Save contacts updates to localStorage and central server
   const handleSaveContacts = (newContacts: Contact[]) => {
     setContacts(newContacts);
     saveContactsToStorage(newContacts);
-    triggerBackgroundDriveSync(newContacts, callHistory, ringtoneConfig);
+    triggerCentralServerSync(newContacts, callHistory, identity);
   };
 
-  // Save call records to localStorage and Google Drive
+  // Save call records to localStorage and central server
   const saveCallRecords = (newRecords: CallRecord[]) => {
     setCallHistory(newRecords);
     localStorage.setItem(STORAGE_KEY_CALL_LOGS, JSON.stringify(newRecords));
-    triggerBackgroundDriveSync(contacts, newRecords, ringtoneConfig);
+    triggerCentralServerSync(contacts, newRecords, identity);
   };
 
   // Setup WebSocket Signaling
@@ -672,6 +799,10 @@ export default function App() {
     }
   };
 
+  if (!hasAccount) {
+    return <AccountSetupScreen onCompleteSetup={handleCompleteAccountSetup} />;
+  }
+
   return (
     <div id="talk-app-root" className="min-h-screen bg-[#09090b] text-zinc-100 font-sans antialiased flex flex-col selection:bg-emerald-500/30 selection:text-emerald-200">
       {/* Top Navbar */}
@@ -680,12 +811,10 @@ export default function App() {
         onSelectTab={setActiveNavTab}
         currentIdentity={identity}
         onOpenSettings={() => setIsSettingsOpen(true)}
-        onOpenDriveModal={() => setIsDriveModalOpen(true)}
         onQuickTestRing={() => {
           ringEngine.previewRingtone(ringtoneConfig.ringtoneType);
         }}
         isOnline={isWsConnected}
-        activeConnectedDevices={activeConnectedDevices}
       />
 
       {/* Main View Router */}
@@ -696,13 +825,7 @@ export default function App() {
             onSaveContacts={handleSaveContacts}
             onInitiateCall={handleInitiateCall}
             onInviteToRoom={(contact) => handleInitiateCall(contact, 'group')}
-          />
-        )}
-
-        {activeNavTab === 'rooms' && (
-          <GroupRoomsManager
-            onStartGroupCall={handleStartGroupCall}
-            contacts={contacts}
+            currentUserName={identity.name}
           />
         )}
 
@@ -710,8 +833,17 @@ export default function App() {
           <CallHistoryView
             callRecords={callHistory}
             onRedial={(contactId, type) => {
-              const target = contacts.find((c) => c.id === contactId) || contacts[0];
-              if (target) handleInitiateCall(target, type);
+              const target = contacts.find((c) => c.id === contactId) || {
+                id: contactId,
+                name: contactId.replace(/^contact_|^user_/, ''),
+                phone: '',
+                role: '',
+                email: '',
+                avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(contactId)}&background=059669&color=ffffff&bold=true`,
+                status: 'online',
+                publicKeyFingerprint: '99DA F102 77B4 4920 18EA',
+              };
+              handleInitiateCall(target, type);
             }}
             onClearHistory={() => saveCallRecords([])}
             contacts={contacts}
@@ -772,26 +904,13 @@ export default function App() {
         onSaveRingtoneConfig={(cfg) => {
           setRingtoneConfig(cfg);
           localStorage.setItem(STORAGE_KEY_SETTINGS, JSON.stringify(cfg));
-          triggerBackgroundDriveSync(contacts, callHistory, cfg);
         }}
         currentIdentity={identity}
-        onSwitchIdentity={handleSwitchIdentity}
-        onOpenDriveModal={() => {
-          setIsSettingsOpen(false);
-          setIsDriveModalOpen(true);
-        }}
-      />
-
-      {/* Google Drive Storage & Sync Modal */}
-      <GoogleDriveModal
-        isOpen={isDriveModalOpen}
-        onClose={() => setIsDriveModalOpen(false)}
-        contacts={contacts}
-        callHistory={callHistory}
-        identity={identity}
-        ringtoneConfig={ringtoneConfig}
-        onRestoreData={handleRestoreFromDrive}
+        onUpdateIdentityName={handleUpdateIdentityName}
+        onLogOut={handleLogOut}
+        onResetAllData={handleResetAllData}
       />
     </div>
   );
 }
+
