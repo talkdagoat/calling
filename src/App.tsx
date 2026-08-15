@@ -265,6 +265,19 @@ export default function App() {
 
   // Attempt initial load from Google Drive if already connected
   useEffect(() => {
+    if (identity.name) {
+      // Ensure current user is registered in the server's central directory
+      fetch('/api/users/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: identity.name,
+          avatar: identity.avatar,
+          publicKeyFingerprint: identity.publicKeyFingerprint,
+        }),
+      }).catch((e) => console.warn('Directory check deferred:', e));
+    }
+
     if (googleDriveService.isConnected()) {
       googleDriveService.loadPayloadFromDrive().then((res) => {
         if (res.success && res.data) {

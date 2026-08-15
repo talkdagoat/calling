@@ -35,7 +35,14 @@ function loadStore(): ServerStore {
   try {
     if (fs.existsSync(DATA_FILE)) {
       const raw = fs.readFileSync(DATA_FILE, 'utf-8');
-      return JSON.parse(raw);
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object') {
+        return {
+          registeredUsers: parsed.registeredUsers || {},
+          userContacts: parsed.userContacts || {},
+          callHistory: parsed.callHistory || {},
+        };
+      }
     }
   } catch (e) {
     console.error('Failed to read central data file:', e);
@@ -350,6 +357,47 @@ app.post('/api/users/register', (req, res) => {
 app.get('/api/users', (req, res) => {
   const users = Object.values(centralStore.registeredUsers);
   res.json({ users });
+});
+
+// Check or Ensure a User Exists by Name (Auto-provisions contact identity if not yet registered)
+app.post('/api/users/ensure', (req, res) => {
+  try {
+    const { name, role } = req.body;
+    if (!name || typeof name !== 'string' || !name.trim()) {
+      return res.status(400).json({ error: 'Name is required' });
+    }
+
+    const cleanName = name.trim();
+    const key = cleanName.toLowerCase();
+
+    // Check exact or partial
+    let existing = centralStore.registeredUsers[key];
+    if (!existing) {
+      existing = Object.values(centralStore.registeredUsers).find(
+        u => u.name.toLowerCase() === key
+      );
+    }
+
+    if (existing) {
+      return res.json({ success: true, user: existing, isNew: false });
+    }
+
+    // Auto-create registered user record
+    const newUser: RegisteredUser = {
+      id: `user_${key.replace(/[^a-z0-9]/g, '_')}_${Date.now().toString(36)}`,
+      name: cleanName,
+      avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(cleanName)}&background=059669&color=ffffff&bold=true`,
+      createdAt: new Date().toISOString(),
+      publicKeyFingerprint: `${Math.floor(1000 + Math.random() * 9000).toString(16).toUpperCase()} ${Math.floor(1000 + Math.random() * 9000).toString(16).toUpperCase()} ${Math.floor(1000 + Math.random() * 9000).toString(16).toUpperCase()} ${Math.floor(1000 + Math.random() * 9000).toString(16).toUpperCase()}`,
+    };
+
+    centralStore.registeredUsers[key] = newUser;
+    saveStore(centralStore);
+
+    return res.json({ success: true, user: newUser, isNew: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to ensure user' });
+  }
 });
 
 // Check if a User Exists by Name

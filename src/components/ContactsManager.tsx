@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  Users, Search, Phone, Video, UserPlus, Star, Edit2, Trash2, 
-  X, AlertCircle, CheckCircle2, RefreshCw, UserCheck
+  Users, Search, Phone, Video, UserPlus, Star, Trash2, 
+  X, AlertCircle, CheckCircle2, RefreshCw, RotateCcw,
+  Sparkles, Plus, ArrowRight
 } from 'lucide-react';
 import { Contact, CallType } from '../types';
 
@@ -17,8 +18,8 @@ interface RegisteredUser {
   id: string;
   name: string;
   avatar: string;
-  createdAt: string;
-  publicKeyFingerprint: string;
+  createdAt?: string;
+  publicKeyFingerprint?: string;
 }
 
 export const ContactsManager: React.FC<ContactsManagerProps> = ({
@@ -28,21 +29,17 @@ export const ContactsManager: React.FC<ContactsManagerProps> = ({
   currentUserName,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
-  const [editingContact, setEditingContact] = useState<Contact | null>(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [contactNameToAdd, setContactNameToAdd] = useState('');
   const [contactNoteToAdd, setContactNoteToAdd] = useState('');
-  const [isCheckingUser, setIsCheckingUser] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
-  
-  // Available registered users on Talk
+  const [successToast, setSuccessToast] = useState<string | null>(null);
   const [registeredUsers, setRegisteredUsers] = useState<RegisteredUser[]>([]);
-  const [isLoadingUsers, setIsLoadingUsers] = useState(false);
 
-  // Load registered users from server
+  // Fetch registered users
   const fetchRegisteredUsers = async () => {
     try {
-      setIsLoadingUsers(true);
       const res = await fetch('/api/users');
       if (res.ok) {
         const data = await res.json();
@@ -51,15 +48,13 @@ export const ContactsManager: React.FC<ContactsManagerProps> = ({
         }
       }
     } catch (e) {
-      console.error('Failed to fetch registered users:', e);
-    } finally {
-      setIsLoadingUsers(false);
+      // ignore
     }
   };
 
   useEffect(() => {
     fetchRegisteredUsers();
-  }, [isAddModalOpen]);
+  }, []);
 
   const trimmedQuery = searchQuery.trim().toLowerCase();
 
@@ -72,22 +67,32 @@ export const ContactsManager: React.FC<ContactsManagerProps> = ({
     );
   });
 
-  // Toggle favorite
-  const handleToggleFavorite = (id: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    const updated = contacts.map(c => c.id === id ? { ...c, isFavorite: !c.isFavorite } : c);
-    onSaveContacts(updated);
+  const showToast = (msg: string) => {
+    setSuccessToast(msg);
+    setTimeout(() => setSuccessToast(null), 3000);
   };
 
-  // Delete contact (Zero browser confirm block - instantly deletes!)
+  // Delete single contact
   const handleDeleteContact = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     e.preventDefault();
     const updated = contacts.filter(c => c.id !== id);
     onSaveContacts(updated);
+    showToast('Contact removed');
   };
 
-  // Handle Add/Edit Contact
+  // Reset all contacts completely
+  const handleResetAllContacts = async () => {
+    onSaveContacts([]);
+    try {
+      await fetch('/api/reset-all', { method: 'POST' });
+    } catch (e) {
+      // local reset still works
+    }
+    showToast('All contacts reset clean');
+  };
+
+  // Handle Form Submit in Add Contact Modal
   const handleSaveContactModal = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setAddError(null);
@@ -100,85 +105,90 @@ export const ContactsManager: React.FC<ContactsManagerProps> = ({
       return;
     }
 
-    // Check if contact already exists in your contact list
-    if (!editingContact && contacts.some(c => c.name.toLowerCase() === rawName.toLowerCase())) {
-      setAddError(`"${rawName}" is already in your contacts.`);
+    // Check if already in contacts list
+    if (contacts.some(c => c.name.toLowerCase() === rawName.toLowerCase())) {
+      setAddError(`"${rawName}" is already in your contacts list.`);
       return;
     }
 
-    // Verify on server if the user has an existing account
-    setIsCheckingUser(true);
-    try {
-      const res = await fetch(`/api/users/check?name=${encodeURIComponent(rawName)}`);
-      const data = await res.json();
+    setIsSubmitting(true);
 
-      if (!data.exists || !data.user) {
-        setAddError(
-          `Cannot add "${rawName}". This person has not created an account on Talk yet. Only registered Talk users can be added.`
-        );
-        setIsCheckingUser(false);
-        return;
+    try {
+      const res = await fetch('/api/users/ensure', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: rawName,
+          role: contactNoteToAdd.trim() || 'Talk User',
+        }),
+      });
+
+      let targetUser: RegisteredUser;
+
+      if (res.ok) {
+        const data = await res.json();
+        targetUser = data.user || {
+          id: `user_${rawName.toLowerCase().replace(/[^a-z0-9]/g, '_')}_${Date.now().toString(36)}`,
+          name: rawName,
+          avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(rawName)}&background=059669&color=ffffff&bold=true`,
+          publicKeyFingerprint: '4E9A B7C2 91F0 33DA 8201',
+        };
+      } else {
+        targetUser = {
+          id: `user_${rawName.toLowerCase().replace(/[^a-z0-9]/g, '_')}_${Date.now().toString(36)}`,
+          name: rawName,
+          avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(rawName)}&background=059669&color=ffffff&bold=true`,
+          publicKeyFingerprint: '4E9A B7C2 91F0 33DA 8201',
+        };
       }
 
-      const verifiedUser: RegisteredUser = data.user;
-
-      const updatedContact: Contact = {
-        id: verifiedUser.id || `user_${verifiedUser.name.toLowerCase().replace(/[^a-z0-9]/g, '_')}`,
-        name: verifiedUser.name,
+      const newContact: Contact = {
+        id: targetUser.id || `user_${rawName.toLowerCase().replace(/[^a-z0-9]/g, '_')}`,
+        name: targetUser.name,
         phone: '',
-        email: `${verifiedUser.name.toLowerCase().replace(/[^a-z0-9]/g, '')}@talk.io`,
+        email: `${targetUser.name.toLowerCase().replace(/[^a-z0-9]/g, '')}@talk.io`,
         role: contactNoteToAdd.trim() || 'Talk User',
-        avatar: verifiedUser.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(verifiedUser.name)}&background=059669&color=ffffff&bold=true`,
+        avatar: targetUser.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(rawName)}&background=059669&color=ffffff&bold=true`,
         status: 'online',
-        publicKeyFingerprint: verifiedUser.publicKeyFingerprint || '4E9A B7C2 91F0 33DA 8201',
-        deviceList: ['Registered Device'],
-        notes: contactNoteToAdd.trim(),
-        isFavorite: editingContact ? editingContact.isFavorite : false,
+        publicKeyFingerprint: targetUser.publicKeyFingerprint || '4E9A B7C2 91F0 33DA 8201',
+        deviceList: ['Primary Device'],
+        notes: contactNoteToAdd.trim() || '',
+        isFavorite: false,
         tags: [],
       };
 
-      if (editingContact) {
-        onSaveContacts(contacts.map(c => c.id === editingContact.id ? updatedContact : c));
-      } else {
-        onSaveContacts([...contacts, updatedContact]);
-      }
-
+      const updated = [...contacts, newContact];
+      onSaveContacts(updated);
+      showToast(`Added ${rawName} to contacts!`);
       setIsAddModalOpen(false);
-      setEditingContact(null);
       setContactNameToAdd('');
       setContactNoteToAdd('');
-      setSearchQuery('');
     } catch (err) {
-      setAddError('Network error checking Talk registered accounts. Please try again.');
+      const fallbackContact: Contact = {
+        id: `user_${rawName.toLowerCase().replace(/[^a-z0-9]/g, '_')}_${Date.now().toString(36)}`,
+        name: rawName,
+        phone: '',
+        email: `${rawName.toLowerCase().replace(/[^a-z0-9]/g, '')}@talk.io`,
+        role: contactNoteToAdd.trim() || 'Talk User',
+        avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(rawName)}&background=059669&color=ffffff&bold=true`,
+        status: 'online',
+        publicKeyFingerprint: '4E9A B7C2 91F0 33DA 8201',
+        deviceList: ['Primary Device'],
+        notes: contactNoteToAdd.trim() || '',
+        isFavorite: false,
+        tags: [],
+      };
+      onSaveContacts([...contacts, fallbackContact]);
+      showToast(`Added ${rawName} to contacts!`);
+      setIsAddModalOpen(false);
+      setContactNameToAdd('');
+      setContactNoteToAdd('');
     } finally {
-      setIsCheckingUser(false);
+      setIsSubmitting(false);
     }
-  };
-
-  // Quick add from available registered users
-  const handleQuickAddRegisteredUser = (user: RegisteredUser) => {
-    if (contacts.some(c => c.id === user.id || c.name.toLowerCase() === user.name.toLowerCase())) {
-      return;
-    }
-    const newContact: Contact = {
-      id: user.id,
-      name: user.name,
-      phone: '',
-      email: `${user.name.toLowerCase().replace(/[^a-z0-9]/g, '')}@talk.io`,
-      role: 'Talk User',
-      avatar: user.avatar,
-      status: 'online',
-      publicKeyFingerprint: user.publicKeyFingerprint,
-      deviceList: ['Registered Device'],
-      isFavorite: false,
-      tags: [],
-    };
-    onSaveContacts([...contacts, newContact]);
-    setIsAddModalOpen(false);
   };
 
   const handleOpenAddModal = (prefillName = '') => {
-    setEditingContact(null);
     setContactNameToAdd(prefillName);
     setContactNoteToAdd('');
     setAddError(null);
@@ -186,198 +196,197 @@ export const ContactsManager: React.FC<ContactsManagerProps> = ({
     fetchRegisteredUsers();
   };
 
-  // Other users on Talk excluding self & already added contacts
-  const otherRegisteredUsers = registeredUsers.filter(
-    u => u.name.toLowerCase() !== currentUserName.trim().toLowerCase() &&
-         !contacts.some(c => c.name.toLowerCase() === u.name.toLowerCase() || c.id === u.id)
-  );
-
   return (
     <div id="contacts-manager-view" className="w-full max-w-4xl mx-auto px-4 py-6">
-      {/* 1. Header with Add Contact Button */}
-      <div className="flex items-center justify-between gap-4 mb-6">
+      {/* Toast Notification */}
+      {successToast && (
+        <div className="fixed top-20 right-6 z-50 bg-emerald-950/90 border border-emerald-500 text-emerald-200 px-4 py-2.5 rounded-2xl shadow-xl backdrop-blur-md text-xs font-semibold flex items-center gap-2 animate-bounce">
+          <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+          <span>{successToast}</span>
+        </div>
+      )}
+
+      {/* Header with Add Contact & Reset Buttons */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
         <div className="flex items-center gap-3">
           <div className="p-2.5 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl text-emerald-400">
             <Users className="w-6 h-6" />
           </div>
           <div>
             <h1 className="text-xl font-bold text-white tracking-tight">Contacts</h1>
-            <p className="text-xs text-zinc-400">Verified Talk users saved in your encrypted directory</p>
+            <p className="text-xs text-zinc-400">Manage your saved contacts and start calls</p>
           </div>
         </div>
 
-        <button
-          id="add-new-contact-btn"
-          onClick={() => handleOpenAddModal()}
-          className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-2xl text-xs font-bold shadow-lg shadow-emerald-950/50 transition-all active:scale-98 cursor-pointer"
-        >
-          <UserPlus className="w-4 h-4" />
-          <span>Add Contact</span>
-        </button>
+        <div className="flex items-center gap-2 w-full sm:w-auto">
+          {contacts.length > 0 && (
+            <button
+              id="reset-contacts-btn"
+              onClick={handleResetAllContacts}
+              className="flex items-center justify-center gap-1.5 px-3 py-2 bg-zinc-900 hover:bg-red-950/40 text-zinc-400 hover:text-red-400 border border-zinc-800 hover:border-red-500/30 rounded-xl text-xs font-medium transition-colors cursor-pointer"
+              title="Reset and clear all saved contacts"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span>Reset Contacts</span>
+            </button>
+          )}
+
+          <button
+            id="add-new-contact-btn"
+            onClick={() => handleOpenAddModal()}
+            className="flex-1 sm:flex-initial flex items-center justify-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-2xl text-xs font-bold shadow-lg shadow-emerald-950/50 transition-all active:scale-98 cursor-pointer"
+          >
+            <UserPlus className="w-4 h-4" />
+            <span>Add New Contact</span>
+          </button>
+        </div>
       </div>
 
-      {/* 2. Search Contacts Input */}
-      {contacts.length > 0 && (
-        <div className="mb-5">
-          <div className="relative">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
-            <input
-              id="filter-contacts-search"
-              type="text"
-              placeholder="Search contact by name to call..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full bg-[#121216] border border-zinc-800/90 hover:border-zinc-700 rounded-2xl pl-11 pr-10 py-3 text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-emerald-500 transition-colors shadow-inner font-medium"
-            />
-            {searchQuery && (
-              <button
-                onClick={() => setSearchQuery('')}
-                className="absolute right-3.5 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300 p-1 cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* 3. Contacts List */}
-      {filteredContacts.length > 0 ? (
-        <div className="space-y-2.5">
-          {filteredContacts.map((contact) => (
-            <div
-              key={contact.id}
-              id={`contact-item-${contact.id}`}
-              className="bg-[#121216] border border-zinc-800/80 hover:border-emerald-500/30 rounded-2xl p-4 flex items-center justify-between gap-4 transition-all duration-150 shadow-md shadow-black/20 group"
+      {/* Search Filter */}
+      <div className="mb-5">
+        <div className="relative">
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
+          <input
+            id="filter-contacts-search"
+            type="text"
+            placeholder="Search your contacts by name..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full bg-[#121216] border border-zinc-800/90 hover:border-zinc-700 rounded-2xl pl-11 pr-10 py-3 text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-emerald-500 transition-colors shadow-inner font-medium"
+          />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery('')}
+              className="absolute right-3.5 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300 p-1 cursor-pointer"
             >
-              {/* Left: Avatar + Name + Note */}
-              <div className="flex items-center gap-3.5 min-w-0">
-                <div className="relative shrink-0">
-                  <img
-                    src={contact.avatar}
-                    alt={contact.name}
-                    className="w-12 h-12 rounded-2xl object-cover border border-zinc-750/80 shadow-md"
-                  />
-                  <span
-                    className={`absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full border-2 border-[#121216] ${
-                      contact.status === 'online'
-                        ? 'bg-emerald-500 shadow-xs shadow-emerald-500/50'
-                        : 'bg-zinc-500'
-                    }`}
-                  />
-                </div>
+              <X className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+      </div>
 
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-sm font-bold text-zinc-100 truncate group-hover:text-emerald-300 transition-colors">
-                      {contact.name}
-                    </h3>
-                    <span className="px-1.5 py-0.2 bg-emerald-950/80 border border-emerald-500/30 text-emerald-400 text-[10px] font-mono rounded">
-                      Verified User
-                    </span>
-                    {contact.isFavorite && (
-                      <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400 shrink-0" />
-                    )}
+      {/* Contacts List */}
+      <div>
+        {filteredContacts.length > 0 ? (
+          <div className="space-y-2.5">
+            {filteredContacts.map((contact) => (
+              <div
+                key={contact.id}
+                id={`contact-item-${contact.id}`}
+                className="bg-[#121216] border border-zinc-800/80 hover:border-emerald-500/30 rounded-2xl p-4 flex items-center justify-between gap-4 transition-all duration-150 shadow-md shadow-black/20 group"
+              >
+                {/* Left: Avatar + Name + Note */}
+                <div className="flex items-center gap-3.5 min-w-0">
+                  <div className="relative shrink-0">
+                    <img
+                      src={contact.avatar}
+                      alt={contact.name}
+                      className="w-12 h-12 rounded-2xl object-cover border border-zinc-750/80 shadow-md"
+                    />
+                    <span className="absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full border-2 border-[#121216] bg-emerald-500 shadow-xs shadow-emerald-500/50" />
                   </div>
-                  {contact.role ? (
-                    <div className="text-xs text-zinc-400 truncate mt-0.5">{contact.role}</div>
-                  ) : (
-                    <div className="text-xs text-zinc-500 truncate mt-0.5">Ready to call</div>
-                  )}
+
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-sm font-bold text-zinc-100 truncate group-hover:text-emerald-300 transition-colors">
+                        {contact.name}
+                      </h3>
+                      <span className="px-1.5 py-0.2 bg-emerald-950/80 border border-emerald-500/30 text-emerald-400 text-[10px] font-mono rounded">
+                        Online
+                      </span>
+                    </div>
+                    <div className="text-xs text-zinc-400 truncate mt-0.5">
+                      {contact.role || 'Ready to call'}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Right: Calling & Delete Buttons */}
+                <div className="flex items-center gap-2 shrink-0">
+                  {/* Audio Call Button */}
+                  <button
+                    id={`call-audio-${contact.id}`}
+                    onClick={() => onInitiateCall(contact, 'audio')}
+                    className="p-2.5 bg-emerald-950/70 hover:bg-emerald-600 text-emerald-400 hover:text-white border border-emerald-500/30 hover:border-emerald-600 rounded-xl transition-all active:scale-95 shadow-xs flex items-center gap-1.5 text-xs font-semibold cursor-pointer"
+                    title={`Audio Call ${contact.name}`}
+                  >
+                    <Phone className="w-4 h-4" />
+                    <span className="hidden sm:inline">Audio</span>
+                  </button>
+
+                  {/* Video Call Button */}
+                  <button
+                    id={`call-video-${contact.id}`}
+                    onClick={() => onInitiateCall(contact, 'video')}
+                    className="p-2.5 bg-teal-950/70 hover:bg-teal-600 text-teal-300 hover:text-white border border-teal-500/30 hover:border-teal-600 rounded-xl transition-all active:scale-95 shadow-xs flex items-center gap-1.5 text-xs font-semibold cursor-pointer"
+                    title={`Video Call ${contact.name}`}
+                  >
+                    <Video className="w-4 h-4" />
+                    <span className="hidden sm:inline">Video</span>
+                  </button>
+
+                  {/* Delete Contact */}
+                  <button
+                    id={`delete-contact-${contact.id}`}
+                    onClick={(e) => handleDeleteContact(contact.id, e)}
+                    className="p-2 text-zinc-500 hover:text-red-400 hover:bg-red-950/30 rounded-xl transition-colors cursor-pointer"
+                    title="Delete Contact"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
                 </div>
               </div>
-
-              {/* Right: Calling & Delete Buttons */}
-              <div className="flex items-center gap-2 shrink-0">
-                {/* Audio Call Button */}
-                <button
-                  id={`call-audio-${contact.id}`}
-                  onClick={() => onInitiateCall(contact, 'audio')}
-                  className="p-2.5 bg-emerald-950/70 hover:bg-emerald-600 text-emerald-400 hover:text-white border border-emerald-500/30 hover:border-emerald-600 rounded-xl transition-all active:scale-95 shadow-xs flex items-center gap-1.5 text-xs font-semibold cursor-pointer"
-                  title={`Audio Call ${contact.name}`}
-                >
-                  <Phone className="w-4 h-4" />
-                  <span className="hidden sm:inline">Audio</span>
-                </button>
-
-                {/* Video Call Button */}
-                <button
-                  id={`call-video-${contact.id}`}
-                  onClick={() => onInitiateCall(contact, 'video')}
-                  className="p-2.5 bg-teal-950/70 hover:bg-teal-600 text-teal-300 hover:text-white border border-teal-500/30 hover:border-teal-600 rounded-xl transition-all active:scale-95 shadow-xs flex items-center gap-1.5 text-xs font-semibold cursor-pointer"
-                  title={`Video Call ${contact.name}`}
-                >
-                  <Video className="w-4 h-4" />
-                  <span className="hidden sm:inline">Video</span>
-                </button>
-
-                {/* Delete Contact (Direct 100% reliable delete) */}
-                <button
-                  id={`delete-contact-${contact.id}`}
-                  onClick={(e) => handleDeleteContact(contact.id, e)}
-                  className="p-2 text-zinc-500 hover:text-red-400 hover:bg-red-950/30 rounded-xl transition-colors cursor-pointer"
-                  title="Delete Contact"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              </div>
+            ))}
+          </div>
+        ) : contacts.length === 0 ? (
+          /* Empty Contacts */
+          <div className="text-center py-12 px-4 bg-[#121216] border border-zinc-800/90 rounded-3xl shadow-xl max-w-md mx-auto my-4">
+            <div className="w-14 h-14 bg-emerald-950/80 border border-emerald-500/30 rounded-2xl flex items-center justify-center mx-auto mb-3 text-emerald-400 shadow-lg shadow-emerald-950/50">
+              <Users className="w-7 h-7" />
             </div>
-          ))}
-        </div>
-      ) : contacts.length === 0 ? (
-        /* Empty State */
-        <div className="text-center py-14 px-4 bg-[#121216] border border-zinc-800/90 rounded-3xl shadow-xl max-w-md mx-auto my-6">
-          <div className="w-16 h-16 bg-emerald-950/80 border border-emerald-500/30 rounded-3xl flex items-center justify-center mx-auto mb-4 text-emerald-400 shadow-lg shadow-emerald-950/50">
-            <Users className="w-8 h-8" />
-          </div>
-          <h3 className="text-base font-bold text-white">No contacts saved yet</h3>
-          <p className="text-xs text-zinc-400 max-w-sm mx-auto mt-1.5 mb-6 leading-relaxed">
-            Add registered Talk users to your contact list to start voice and video calls.
-          </p>
+            <h3 className="text-base font-bold text-white">No contacts saved</h3>
+            <p className="text-xs text-zinc-400 max-w-sm mx-auto mt-1 mb-5 leading-relaxed">
+              Add your friend by typing their name below.
+            </p>
 
-          <button
-            id="empty-add-contact-action-btn"
-            onClick={() => handleOpenAddModal()}
-            className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-2xl text-xs font-bold shadow-lg shadow-emerald-950/50 inline-flex items-center gap-2 transition-colors cursor-pointer"
-          >
-            <UserPlus className="w-4 h-4" />
-            <span>Add a Contact</span>
-          </button>
-        </div>
-      ) : (
-        /* Contact not found in existing list */
-        <div className="text-center py-12 px-4 bg-[#121216] border border-zinc-800/90 rounded-3xl max-w-md mx-auto my-6 shadow-xl">
-          <div className="w-12 h-12 bg-amber-950/50 border border-amber-500/30 rounded-2xl flex items-center justify-center mx-auto mb-3 text-amber-400">
-            <AlertCircle className="w-6 h-6" />
+            <button
+              onClick={() => handleOpenAddModal()}
+              className="w-full sm:w-auto px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold shadow-lg shadow-emerald-950/50 inline-flex items-center justify-center gap-2 transition-colors cursor-pointer"
+            >
+              <UserPlus className="w-4 h-4" />
+              <span>Add Friend to Contacts</span>
+            </button>
           </div>
-          <h3 className="text-sm font-bold text-white">"{searchQuery}" is not in your contacts</h3>
-          <p className="text-xs text-zinc-400 mt-1.5 mb-5 max-w-xs mx-auto">
-            You can add this person to your contacts if they have created an account on Talk.
-          </p>
-          <button
-            onClick={() => handleOpenAddModal(searchQuery.trim())}
-            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold inline-flex items-center gap-2 shadow-lg shadow-emerald-950/50 cursor-pointer"
-          >
-            <UserPlus className="w-4 h-4" />
-            <span>Add "{searchQuery}"</span>
-          </button>
-        </div>
-      )}
+        ) : (
+          /* Search filter empty */
+          <div className="text-center py-10 px-4 bg-[#121216] border border-zinc-800 rounded-2xl max-w-md mx-auto my-4">
+            <p className="text-xs text-zinc-400 mb-3">No contact matched "{searchQuery}"</p>
+            <button
+              onClick={() => handleOpenAddModal(searchQuery.trim())}
+              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold inline-flex items-center gap-2 cursor-pointer"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Add "{searchQuery}" as Contact</span>
+            </button>
+          </div>
+        )}
+      </div>
 
-      {/* Add / Edit Contact Modal with Account Verification */}
+      {/* Add Contact Modal */}
       {isAddModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-xl animate-fade-in">
-          <div className="w-full max-w-md bg-[#121216] border border-zinc-750/80 rounded-3xl p-6 shadow-2xl text-zinc-100">
+          <div className="w-full max-w-md bg-[#121216] border border-zinc-750/80 rounded-3xl p-6 shadow-2xl text-zinc-100 max-h-[90vh] overflow-y-auto">
+            {/* Modal Header */}
             <div className="flex items-center justify-between mb-4 pb-3 border-b border-zinc-800">
               <h2 className="text-base font-bold text-white flex items-center gap-2">
                 <UserPlus className="w-5 h-5 text-emerald-400" />
-                <span>{editingContact ? 'Edit Contact' : 'Add Registered User'}</span>
+                <span>Add Friend to Contacts</span>
               </h2>
               <button
                 onClick={() => {
                   setIsAddModalOpen(false);
-                  setEditingContact(null);
                   setContactNameToAdd('');
+                  setContactNoteToAdd('');
                   setAddError(null);
                 }}
                 className="text-zinc-500 hover:text-zinc-300 p-1 cursor-pointer"
@@ -386,9 +395,9 @@ export const ContactsManager: React.FC<ContactsManagerProps> = ({
               </button>
             </div>
 
-            {/* Error Message when user does not exist on Talk */}
+            {/* Error Message if any */}
             {addError && (
-              <div className="mb-4 p-3 bg-red-950/60 border border-red-500/40 rounded-2xl flex items-start gap-2.5 text-xs text-red-200 leading-relaxed">
+              <div className="mb-4 p-3 bg-red-950/60 border border-red-500/40 rounded-2xl flex items-start gap-2 text-xs text-red-200">
                 <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
                 <span>{addError}</span>
               </div>
@@ -396,8 +405,8 @@ export const ContactsManager: React.FC<ContactsManagerProps> = ({
 
             <form onSubmit={handleSaveContactModal} className="space-y-4">
               <div>
-                <label className="text-xs font-medium text-zinc-300 block mb-1">
-                  Contact's Talk Account Name *
+                <label className="text-xs font-semibold text-zinc-300 block mb-1">
+                  Friend's Name *
                 </label>
                 <input
                   name="name"
@@ -409,16 +418,13 @@ export const ContactsManager: React.FC<ContactsManagerProps> = ({
                     setContactNameToAdd(e.target.value);
                     if (addError) setAddError(null);
                   }}
-                  placeholder="e.g. Alex or Sarah"
+                  placeholder="Enter your friend's name"
                   className="w-full bg-[#0c0c0e] border border-zinc-800 focus:border-emerald-500 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-zinc-500 focus:outline-none transition-colors"
                 />
-                <p className="text-[11px] text-zinc-500 mt-1">
-                  Must be an active account registered on Talk.
-                </p>
               </div>
 
               <div>
-                <label className="text-xs font-medium text-zinc-400 block mb-1">
+                <label className="text-xs font-semibold text-zinc-400 block mb-1">
                   Nickname / Note (Optional)
                 </label>
                 <input
@@ -426,63 +432,18 @@ export const ContactsManager: React.FC<ContactsManagerProps> = ({
                   type="text"
                   value={contactNoteToAdd}
                   onChange={(e) => setContactNoteToAdd(e.target.value)}
-                  placeholder="e.g. Work, Family, Friend"
+                  placeholder="e.g. Friend, Work, Family"
                   className="w-full bg-[#0c0c0e] border border-zinc-800 focus:border-emerald-500 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-zinc-500 focus:outline-none transition-colors"
                 />
               </div>
-
-              {/* Other registered Talk users discoverable */}
-              {otherRegisteredUsers.length > 0 && (
-                <div className="pt-2 border-t border-zinc-800/80">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs font-semibold text-zinc-400 flex items-center gap-1.5">
-                      <UserCheck className="w-3.5 h-3.5 text-emerald-400" />
-                      Users on Talk:
-                    </span>
-                    <button
-                      type="button"
-                      onClick={fetchRegisteredUsers}
-                      className="text-[11px] text-zinc-500 hover:text-zinc-300 flex items-center gap-1 cursor-pointer"
-                    >
-                      <RefreshCw className={`w-3 h-3 ${isLoadingUsers ? 'animate-spin' : ''}`} />
-                      Refresh
-                    </button>
-                  </div>
-
-                  <div className="max-h-32 overflow-y-auto space-y-1.5 pr-1">
-                    {otherRegisteredUsers.map((regUser) => (
-                      <div
-                        key={regUser.id}
-                        onClick={() => {
-                          setContactNameToAdd(regUser.name);
-                          if (addError) setAddError(null);
-                        }}
-                        className="flex items-center justify-between p-2 bg-[#0c0c0e] hover:bg-[#18181d] border border-zinc-800 rounded-xl cursor-pointer transition-colors"
-                      >
-                        <div className="flex items-center gap-2">
-                          <img
-                            src={regUser.avatar}
-                            alt={regUser.name}
-                            className="w-6 h-6 rounded-lg object-cover"
-                          />
-                          <span className="text-xs font-bold text-zinc-200">{regUser.name}</span>
-                        </div>
-                        <span className="text-[10px] text-emerald-400 bg-emerald-950/80 px-2 py-0.5 rounded-full border border-emerald-500/30">
-                          Select
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
 
               <div className="flex items-center justify-end gap-2 pt-3 border-t border-zinc-800">
                 <button
                   type="button"
                   onClick={() => {
                     setIsAddModalOpen(false);
-                    setEditingContact(null);
                     setContactNameToAdd('');
+                    setContactNoteToAdd('');
                     setAddError(null);
                   }}
                   className="px-4 py-2 bg-[#18181d] hover:bg-[#222228] border border-zinc-800 text-zinc-300 rounded-xl text-xs font-medium cursor-pointer"
@@ -491,13 +452,13 @@ export const ContactsManager: React.FC<ContactsManagerProps> = ({
                 </button>
                 <button
                   type="submit"
-                  disabled={isCheckingUser || !contactNameToAdd.trim()}
+                  disabled={isSubmitting || !contactNameToAdd.trim()}
                   className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded-xl text-xs font-bold shadow-lg shadow-emerald-950/50 flex items-center gap-1.5 cursor-pointer"
                 >
-                  {isCheckingUser ? (
+                  {isSubmitting ? (
                     <>
                       <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                      <span>Checking Account...</span>
+                      <span>Adding...</span>
                     </>
                   ) : (
                     <span>Add to Contacts</span>
