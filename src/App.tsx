@@ -15,6 +15,7 @@ import { ringEngine } from './utils/audioRingEngine';
 import { mediaManager } from './utils/webrtcManager';
 import { googleDriveService, TalkDrivePayload } from './utils/googleDriveSync';
 import { notificationEngine } from './utils/notificationEngine';
+import { registerUserInFirestore, testFirestoreConnection } from './lib/firebase';
 
 import { Navbar } from './components/Navbar';
 import { AccountSetupScreen } from './components/AccountSetupScreen';
@@ -151,6 +152,14 @@ export default function App() {
     };
 
     try {
+      // Register in Firestore online database
+      await registerUserInFirestore({
+        id: newIdentity.id,
+        name: cleanName,
+        avatar: newIdentity.avatar,
+        publicKeyFingerprint: newIdentity.publicKeyFingerprint,
+      });
+
       const res = await fetch('/api/users/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -200,6 +209,13 @@ export default function App() {
       avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(newName)}&background=059669&color=ffffff&bold=true`,
     };
     try {
+      await registerUserInFirestore({
+        id: updated.id,
+        name: newName,
+        avatar: updated.avatar,
+        publicKeyFingerprint: updated.publicKeyFingerprint,
+      });
+
       await fetch('/api/users/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -235,13 +251,21 @@ export default function App() {
 
   // Initialize Web Crypto keys, Service Worker & Google Drive data on startup
   useEffect(() => {
+    testFirestoreConnection();
+
     generateIdentityKeyPair().then((keys) => {
       setCryptoKeys(keys);
-      setIdentity((prev) => ({
-        ...prev,
-        publicKeyFingerprint: keys.fingerprint,
-        publicKeyBase64: keys.publicKeyBase64,
-      }));
+      setIdentity((prev) => {
+        const next = {
+          ...prev,
+          publicKeyFingerprint: keys.fingerprint,
+          publicKeyBase64: keys.publicKeyBase64,
+        };
+        if (next.name) {
+          registerUserInFirestore(next);
+        }
+        return next;
+      });
     });
 
     // Initialize Service Worker for background notifications and ringing
@@ -266,6 +290,8 @@ export default function App() {
   // Attempt initial load from Google Drive if already connected
   useEffect(() => {
     if (identity.name) {
+      registerUserInFirestore(identity).catch((e) => console.warn('Firestore user reg deferred:', e));
+
       // Ensure current user is registered in the server's central directory
       fetch('/api/users/register', {
         method: 'POST',
@@ -839,6 +865,7 @@ export default function App() {
             onInitiateCall={handleInitiateCall}
             onInviteToRoom={(contact) => handleInitiateCall(contact, 'group')}
             currentUserName={identity.name}
+            currentUserId={identity.id}
           />
         )}
 

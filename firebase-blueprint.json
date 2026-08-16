@@ -1,0 +1,94 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "A registered user profile on Talk",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier of the user"
+        },
+        "name": {
+          "type": "string",
+          "description": "User's display name"
+        },
+        "avatar": {
+          "type": "string",
+          "description": "User avatar image URL"
+        },
+        "publicKeyFingerprint": {
+          "type": "string",
+          "description": "Cryptographic public key fingerprint"
+        },
+        "status": {
+          "type": "string",
+          "description": "User status (online/offline)"
+        },
+        "lastActive": {
+          "type": "string",
+          "description": "ISO timestamp of last activity"
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "ISO timestamp of user creation"
+        }
+      },
+      "required": ["id", "name", "avatar", "createdAt"]
+    },
+    "Contact": {
+      "title": "Contact",
+      "description": "A contact relationship saved by a user",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier of the contact relationship"
+        },
+        "ownerId": {
+          "type": "string",
+          "description": "User ID of the owner who saved the contact"
+        },
+        "contactUserId": {
+          "type": "string",
+          "description": "User ID of the verified Talk user"
+        },
+        "name": {
+          "type": "string",
+          "description": "Name of the contact"
+        },
+        "avatar": {
+          "type": "string",
+          "description": "Avatar of the contact"
+        },
+        "role": {
+          "type": "string",
+          "description": "Role, nickname or relationship note"
+        },
+        "notes": {
+          "type": "string",
+          "description": "Personal note about the contact"
+        },
+        "publicKeyFingerprint": {
+          "type": "string",
+          "description": "Public key fingerprint of the contact"
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "ISO timestamp when contact was added"
+        }
+      },
+      "required": ["id", "ownerId", "contactUserId", "name", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "Registered Talk user profiles"
+    },
+    "/contacts/{contactId}": {
+      "schema": "Contact",
+      "description": "Saved user contacts"
+    }
+  }
+}
