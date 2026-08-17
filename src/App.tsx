@@ -544,7 +544,7 @@ export default function App() {
     // Start outgoing telephone ringback tone so caller hears phone ringing
     ringEngine.startOutgoingRingback();
 
-    // Send call invite over WebSocket
+    // Send call invite over WebSocket with target user ID and target user name
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
       wsRef.current.send(
         JSON.stringify({
@@ -553,29 +553,32 @@ export default function App() {
           callType: type,
           sender: identity,
           targetUserId: contact.id,
+          targetUserName: contact.name,
+          roomId: `room_${callId}`,
           payload: {
             safetyNumber,
+            roomName: contact.name,
+            targetUserName: contact.name,
           },
           timestamp: Date.now(),
         })
       );
     }
+  };
 
-    // Auto-Connect simulation fallback after 3.5s if test contact is called
-    setTimeout(() => {
-      setActiveCall((current) => {
-        if (current && current.id === callId && current.status === 'outgoing') {
-          ringEngine.stopAll();
-          ringEngine.playConnectedTone();
-          return {
-            ...current,
-            status: 'connected',
-            startTime: Date.now(),
-          };
-        }
-        return current;
-      });
-    }, 3500);
+  // Allow caller to manually simulate answer if doing a quick solo preview/demo
+  const handleSimulateAnswer = () => {
+    if (!activeCall || activeCall.status !== 'outgoing') return;
+    ringEngine.stopAll();
+    ringEngine.playConnectedTone();
+    setActiveCall((current) => {
+      if (!current) return null;
+      return {
+        ...current,
+        status: 'connected',
+        startTime: Date.now(),
+      };
+    });
   };
 
   // Launch Group Conference Room
@@ -656,6 +659,11 @@ export default function App() {
           callType: type,
           sender: identity,
           targetUserId: incomingCall.caller.id,
+          targetUserName: incomingCall.caller.name,
+          roomId: incomingCall.roomId,
+          payload: {
+            safetyNumber: incomingCall.safetyNumber,
+          },
           timestamp: Date.now(),
         })
       );
@@ -690,6 +698,7 @@ export default function App() {
           callId: incomingCall.id,
           sender: identity,
           targetUserId: incomingCall.caller.id,
+          targetUserName: incomingCall.caller.name,
           timestamp: Date.now(),
         })
       );
@@ -714,6 +723,7 @@ export default function App() {
           roomId: activeCall.roomId,
           sender: identity,
           targetUserId: activeCall.targetContact?.id,
+          targetUserName: activeCall.targetContact?.name,
           timestamp: Date.now(),
         })
       );
@@ -903,6 +913,7 @@ export default function App() {
         <ActiveCallView
           call={activeCall}
           onEndCall={handleEndCall}
+          onSimulateAnswer={handleSimulateAnswer}
           onToggleMute={handleToggleMute}
           onToggleVideo={handleToggleVideo}
           onToggleScreenShare={handleToggleScreenShare}

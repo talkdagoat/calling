@@ -12,6 +12,7 @@ import { E2EESafetyModal } from './E2EESafetyModal';
 interface ActiveCallViewProps {
   call: CallSession;
   onEndCall: () => void;
+  onSimulateAnswer?: () => void;
   onToggleMute: () => void;
   onToggleVideo: () => void;
   onToggleScreenShare: () => void;
@@ -24,6 +25,7 @@ interface ActiveCallViewProps {
 export const ActiveCallView: React.FC<ActiveCallViewProps> = ({
   call,
   onEndCall,
+  onSimulateAnswer,
   onToggleMute,
   onToggleVideo,
   onToggleScreenShare,
@@ -189,22 +191,42 @@ export const ActiveCallView: React.FC<ActiveCallViewProps> = ({
           </div>
         </div>
 
-        {/* Center: Timer & Recording status */}
+        {/* Center: Timer & Recording status / Ringing State */}
         <div className="flex items-center gap-2">
-          {isRecording && (
-            <div className="flex items-center gap-1.5 px-2.5 py-1 bg-red-950/80 border border-red-500/40 text-red-400 text-xs font-mono rounded-full animate-pulse shadow-xs">
-              <span className="w-2 h-2 rounded-full bg-red-500" />
-              <span>REC</span>
+          {call.status === 'outgoing' ? (
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-950/80 border border-emerald-500/40 rounded-xl text-xs font-mono font-bold text-emerald-300 animate-pulse shadow-inner">
+              <Volume2 className="w-4 h-4 text-emerald-400 animate-bounce" />
+              <span>Ringing...</span>
             </div>
-          )}
+          ) : (
+            <>
+              {isRecording && (
+                <div className="flex items-center gap-1.5 px-2.5 py-1 bg-red-950/80 border border-red-500/40 text-red-400 text-xs font-mono rounded-full animate-pulse shadow-xs">
+                  <span className="w-2 h-2 rounded-full bg-red-500" />
+                  <span>REC</span>
+                </div>
+              )}
 
-          <div className="px-4 py-1.5 bg-[#0c0c0e] border border-zinc-800 rounded-xl text-xs font-mono font-bold text-emerald-300 shadow-inner">
-            {formatTime(call.duration)}
-          </div>
+              <div className="px-4 py-1.5 bg-[#0c0c0e] border border-zinc-800 rounded-xl text-xs font-mono font-bold text-emerald-300 shadow-inner">
+                {formatTime(call.duration)}
+              </div>
+            </>
+          )}
         </div>
 
         {/* Right: Quick Action Drawers */}
         <div className="flex items-center gap-2">
+          {/* Simulate Answer (Self Test) if outgoing */}
+          {call.status === 'outgoing' && onSimulateAnswer && (
+            <button
+              onClick={onSimulateAnswer}
+              className="px-3 py-1.5 bg-emerald-600/30 hover:bg-emerald-600 text-emerald-300 hover:text-white border border-emerald-500/50 rounded-xl text-xs font-semibold transition-all shadow-xs"
+              title="Instantly connect for solo self-test preview"
+            >
+              Simulate Answer
+            </button>
+          )}
+
           {/* Chat Toggle */}
           <button
             onClick={() => setActiveTab(activeTab === 'chat' ? 'none' : 'chat')}
@@ -242,7 +264,52 @@ export const ActiveCallView: React.FC<ActiveCallViewProps> = ({
       <div className="flex-1 relative flex overflow-hidden">
         {/* Central Stage View */}
         <div className="flex-1 relative flex items-center justify-center p-4">
-          {isAudioOnly ? (
+          {call.status === 'outgoing' ? (
+            /* Outgoing Ringing Stage */
+            <div id="outgoing-call-stage" className="flex flex-col items-center justify-center text-center max-w-md w-full animate-fade-in">
+              <div className="relative mb-8">
+                <div className="absolute -inset-8 rounded-full bg-emerald-500/20 animate-ping opacity-75 pointer-events-none" />
+                <div className="absolute -inset-4 rounded-full border-2 border-emerald-400/50 animate-pulse pointer-events-none" />
+                <img
+                  src={targetAvatar}
+                  alt={targetName}
+                  className="w-36 h-36 rounded-full object-cover border-4 border-emerald-500 shadow-2xl relative z-10"
+                />
+                <div className="absolute bottom-1 right-1 z-20 p-2 bg-emerald-600 rounded-full border-2 border-[#121216] shadow-md animate-bounce">
+                  <Phone className="w-4 h-4 text-white" />
+                </div>
+              </div>
+
+              <h1 className="text-2xl font-bold text-zinc-100 mb-1 tracking-tight">
+                Calling {targetName}...
+              </h1>
+              <p className="text-xs text-emerald-400 font-medium mb-6 flex items-center gap-1.5">
+                <Volume2 className="w-4 h-4 animate-bounce" />
+                <span>Ringinging recipient's device via WebSocket signaling</span>
+              </p>
+
+              {/* Dynamic Soundwave Spectrum Visualizer */}
+              <div className="flex items-center justify-center gap-1.5 h-16 w-full px-8 mb-6 bg-[#121216]/80 rounded-2xl border border-zinc-800/80 p-3 shadow-inner">
+                {audioWaves.map((height, i) => (
+                  <div
+                    key={i}
+                    className="flex-1 bg-gradient-to-t from-emerald-600 to-teal-300 rounded-full transition-all duration-75"
+                    style={{ height: `${Math.max(12, height)}%` }}
+                  />
+                ))}
+              </div>
+
+              {onSimulateAnswer && (
+                <button
+                  onClick={onSimulateAnswer}
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-2xl text-xs font-bold transition-all shadow-lg shadow-emerald-950/50 flex items-center gap-2 active:scale-95"
+                >
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>Answer Call (Solo Self-Test Demo)</span>
+                </button>
+              )}
+            </div>
+          ) : isAudioOnly ? (
             /* 1-to-1 Audio Calling View */
             <div id="audio-call-stage" className="flex flex-col items-center justify-center text-center max-w-md w-full">
               {/* Pulsating Audio Avatar */}

@@ -369,6 +369,25 @@ class AudioRingEngine {
       });
     } catch (e) {}
   }
+
+  public unlockAudio() {
+    try {
+      const ctx = this.getContext();
+      if (ctx.state === 'suspended') {
+        ctx.resume().catch(() => {});
+      }
+    } catch (e) {}
+  }
 }
 
 export const ringEngine = new AudioRingEngine();
+
+if (typeof window !== 'undefined') {
+  const unlock = () => {
+    ringEngine.unlockAudio();
+  };
+  window.addEventListener('click', unlock, { passive: true });
+  window.addEventListener('touchstart', unlock, { passive: true });
+  window.addEventListener('keydown', unlock, { passive: true });
+}
+

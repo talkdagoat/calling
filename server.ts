@@ -72,11 +72,40 @@ function broadcastPresence() {
   }
 }
 
+// Helper to match target user across connected devices by ID, display name, sanitized username or device
+function matchesTargetClient(clientInfo: ConnectedClient, targetUserId?: string, targetUserName?: string, targetDeviceId?: string): boolean {
+  if (targetDeviceId && clientInfo.deviceId === targetDeviceId) {
+    return true;
+  }
+  
+  const idClean = (targetUserId || '').trim().toLowerCase();
+  const nameClean = (targetUserName || '').trim().toLowerCase();
+  const clientUserIdClean = (clientInfo.userId || '').trim().toLowerCase();
+  const clientNameClean = (clientInfo.name || '').trim().toLowerCase();
+
+  if (idClean) {
+    if (clientUserIdClean === idClean) return true;
+    if (clientNameClean === idClean) return true;
+    if (clientUserIdClean.replace(/^user_/, '') === idClean.replace(/^user_/, '')) return true;
+    if (clientNameClean.replace(/[^a-z0-9]/g, '') === idClean.replace(/[^a-z0-9]/g, '')) return true;
+    if (clientUserIdClean.replace(/[^a-z0-9]/g, '') === idClean.replace(/[^a-z0-9]/g, '')) return true;
+  }
+
+  if (nameClean) {
+    if (clientNameClean === nameClean) return true;
+    if (clientUserIdClean === nameClean) return true;
+    if (clientUserIdClean.replace(/^user_/, '').replace(/[^a-z0-9]/g, '') === nameClean.replace(/[^a-z0-9]/g, '')) return true;
+    if (clientNameClean.replace(/[^a-z0-9]/g, '') === nameClean.replace(/[^a-z0-9]/g, '')) return true;
+  }
+
+  return false;
+}
+
 wss.on('connection', (ws: WebSocket) => {
   ws.on('message', (raw) => {
     try {
       const data = JSON.parse(raw.toString());
-      const { type, sender, targetUserId, targetDeviceId, roomId, callId, callType, payload } = data;
+      const { type, sender, targetUserId, targetUserName, targetDeviceId, roomId, callId, callType, payload } = data;
 
       switch (type) {
         case 'register': {
@@ -108,22 +137,27 @@ wss.on('connection', (ws: WebSocket) => {
         }
 
         case 'call:invite': {
+          const targetName = targetUserName || payload?.targetUserName || payload?.roomName || '';
           let targetDevicesFound = 0;
+
           for (const [clientWs, clientInfo] of clients.entries()) {
-            if (clientWs !== ws && (clientInfo.userId === targetUserId || clientInfo.name.toLowerCase() === targetUserId.toLowerCase())) {
-              if (!targetDeviceId || clientInfo.deviceId === targetDeviceId) {
-                targetDevicesFound++;
-                if (clientWs.readyState === WebSocket.OPEN) {
-                  clientWs.send(JSON.stringify({
-                    type: 'call:incoming',
-                    callId,
-                    callType,
-                    sender,
-                    roomId,
-                    payload,
-                    timestamp: Date.now(),
-                  }));
-                }
+            if (clientWs !== ws && matchesTargetClient(clientInfo, targetUserId, targetName, targetDeviceId)) {
+              targetDevicesFound++;
+              if (clientWs.readyState === WebSocket.OPEN) {
+                clientWs.send(JSON.stringify({
+                  type: 'call:incoming',
+                  callId,
+                  callType,
+                  sender,
+                  roomId: roomId || `room_${callId}`,
+                  payload: {
+                    ...payload,
+                    callerName: sender.name,
+                    callerAvatar: sender.avatar,
+                    roomName: targetName || sender.name,
+                  },
+                  timestamp: Date.now(),
+                }));
               }
             }
           }
@@ -132,7 +166,7 @@ wss.on('connection', (ws: WebSocket) => {
             type: 'call:status',
             callId,
             targetDevicesFound,
-            message: targetDevicesFound > 0 ? 'Ringing target user...' : 'User is currently offline',
+            message: targetDevicesFound > 0 ? `Ringing ${targetName || targetUserId}...` : `User is currently offline`,
             timestamp: Date.now(),
           }));
           break;
@@ -144,8 +178,9 @@ wss.on('connection', (ws: WebSocket) => {
             senderInfo.inCallWith = targetUserId;
           }
 
+          const targetName = targetUserName || payload?.targetUserName || '';
           for (const [clientWs, clientInfo] of clients.entries()) {
-            if (clientInfo.userId === targetUserId || clientInfo.name.toLowerCase() === targetUserId?.toLowerCase()) {
+            if (clientWs !== ws && matchesTargetClient(clientInfo, targetUserId, targetName, targetDeviceId)) {
               if (clientWs.readyState === WebSocket.OPEN) {
                 clientWs.send(JSON.stringify({
                   type: 'call:accepted',
@@ -177,8 +212,9 @@ wss.on('connection', (ws: WebSocket) => {
         }
 
         case 'call:reject': {
+          const targetName = targetUserName || payload?.targetUserName || '';
           for (const [clientWs, clientInfo] of clients.entries()) {
-            if (clientInfo.userId === targetUserId || clientInfo.name.toLowerCase() === targetUserId?.toLowerCase()) {
+            if (clientWs !== ws && matchesTargetClient(clientInfo, targetUserId, targetName, targetDeviceId)) {
               if (clientWs.readyState === WebSocket.OPEN) {
                 clientWs.send(JSON.stringify({
                   type: 'call:rejected',
@@ -212,10 +248,11 @@ wss.on('connection', (ws: WebSocket) => {
             senderInfo.roomId = undefined;
           }
 
+          const targetName = targetUserName || payload?.targetUserName || '';
           for (const [clientWs, clientInfo] of clients.entries()) {
             if (clientWs !== ws) {
               if (
-                (targetUserId && (clientInfo.userId === targetUserId || clientInfo.name.toLowerCase() === targetUserId?.toLowerCase())) ||
+                matchesTargetClient(clientInfo, targetUserId, targetName, targetDeviceId) ||
                 (roomId && clientInfo.roomId === roomId)
               ) {
                 if (clientWs.readyState === WebSocket.OPEN) {
@@ -237,17 +274,60 @@ wss.on('connection', (ws: WebSocket) => {
         case 'webrtc:offer':
         case 'webrtc:answer':
         case 'webrtc:ice': {
+          const targetName = targetUserName || payload?.targetUserName || '';
           for (const [clientWs, clientInfo] of clients.entries()) {
             if (clientWs !== ws) {
               if (
-                (targetUserId && (clientInfo.userId === targetUserId || clientInfo.name.toLowerCase() === targetUserId?.toLowerCase())) ||
-                (targetDeviceId && clientInfo.deviceId === targetDeviceId) ||
+                matchesTargetClient(clientInfo, targetUserId, targetName, targetDeviceId) ||
                 (roomId && clientInfo.roomId === roomId)
               ) {
                 if (clientWs.readyState === WebSocket.OPEN) {
                   clientWs.send(JSON.stringify({
                     type,
                     callId,
+                    roomId,
+                    sender,
+                    payload,
+                    timestamp: Date.now(),
+                  }));
+                }
+              }
+            }
+          }
+          break;
+        }
+
+        case 'room:join': {
+          const senderInfo = clients.get(ws);
+          if (senderInfo) {
+            senderInfo.roomId = roomId;
+          }
+          for (const [clientWs, clientInfo] of clients.entries()) {
+            if (clientWs !== ws && clientInfo.roomId === roomId) {
+              if (clientWs.readyState === WebSocket.OPEN) {
+                clientWs.send(JSON.stringify({
+                  type: 'room:joined',
+                  roomId,
+                  sender,
+                  payload,
+                  timestamp: Date.now(),
+                }));
+              }
+            }
+          }
+          break;
+        }
+
+        case 'room:chat': {
+          for (const [clientWs, clientInfo] of clients.entries()) {
+            if (clientWs !== ws) {
+              if (
+                (roomId && clientInfo.roomId === roomId) ||
+                matchesTargetClient(clientInfo, targetUserId, targetUserName, targetDeviceId)
+              ) {
+                if (clientWs.readyState === WebSocket.OPEN) {
+                  clientWs.send(JSON.stringify({
+                    type: 'room:chat',
                     roomId,
                     sender,
                     payload,
