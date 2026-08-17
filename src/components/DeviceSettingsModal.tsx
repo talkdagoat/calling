@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Settings, Volume2, Bell, Shield, User, 
-  Mic, Video, Check, X, LogOut, Edit3, Trash2, RefreshCw
+  Mic, Video, Check, X, LogOut, Edit3, Trash2, RefreshCw, BellRing, CheckCircle2, AlertCircle
 } from 'lucide-react';
 import { RingtoneConfig, UserIdentity } from '../types';
 import { ringEngine } from '../utils/audioRingEngine';
 import { mediaManager } from '../utils/webrtcManager';
+import { notificationEngine } from '../utils/notificationEngine';
 
 interface DeviceSettingsModalProps {
   isOpen: boolean;
@@ -16,6 +17,7 @@ interface DeviceSettingsModalProps {
   onUpdateIdentityName: (newName: string) => void;
   onLogOut: () => void;
   onResetAllData?: () => void;
+  onTestWhatsAppCall?: () => void;
 }
 
 export const DeviceSettingsModal: React.FC<DeviceSettingsModalProps> = ({
@@ -27,6 +29,7 @@ export const DeviceSettingsModal: React.FC<DeviceSettingsModalProps> = ({
   onUpdateIdentityName,
   onLogOut,
   onResetAllData,
+  onTestWhatsAppCall,
 }) => {
   const [activeRingtone, setActiveRingtone] = useState(ringtoneConfig.ringtoneType);
   const [volume, setVolume] = useState(ringtoneConfig.volume * 100);
@@ -34,10 +37,14 @@ export const DeviceSettingsModal: React.FC<DeviceSettingsModalProps> = ({
   const [editingName, setEditingName] = useState(false);
   const [nameInput, setNameInput] = useState(currentIdentity.name);
   const [isResetting, setIsResetting] = useState(false);
+  const [notifPermission, setNotifPermission] = useState<NotificationPermission>('default');
 
   useEffect(() => {
     let animId: number;
     if (isOpen) {
+      if (typeof Notification !== 'undefined') {
+        setNotifPermission(Notification.permission);
+      }
       setNameInput(currentIdentity.name);
       const pollVolume = () => {
         const vol = mediaManager.getAudioVolume();
@@ -57,6 +64,11 @@ export const DeviceSettingsModal: React.FC<DeviceSettingsModalProps> = ({
   const handleTestRingtone = (type: RingtoneConfig['ringtoneType']) => {
     ringEngine.setVolume(volume / 100);
     ringEngine.previewRingtone(type);
+  };
+
+  const handleRequestPermission = async () => {
+    const res = await notificationEngine.requestNotificationPermission();
+    setNotifPermission(res);
   };
 
   const handleSaveName = (e: React.FormEvent) => {
@@ -107,7 +119,7 @@ export const DeviceSettingsModal: React.FC<DeviceSettingsModalProps> = ({
             </div>
             <div>
               <h2 className="text-base font-bold text-white">Settings</h2>
-              <p className="text-xs text-zinc-400">Manage your profile, ringtone & audio levels</p>
+              <p className="text-xs text-zinc-400">Manage your profile, notifications & audio</p>
             </div>
           </div>
           <button
@@ -192,7 +204,55 @@ export const DeviceSettingsModal: React.FC<DeviceSettingsModalProps> = ({
           </div>
         </div>
 
-        {/* 2. Ringtone Synthesizer Selection */}
+        {/* 2. WhatsApp Desktop Ringing & Notification Permission */}
+        <div className="mb-5 p-4 bg-[#0c0c0e] rounded-2xl border border-teal-500/30">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-bold text-teal-300 uppercase tracking-wider flex items-center gap-1.5">
+              <BellRing className="w-4 h-4 text-teal-400" />
+              WhatsApp-Style Desktop Ringing
+            </span>
+            <span className={`text-[10px] px-2 py-0.5 rounded-full border font-medium ${
+              notifPermission === 'granted'
+                ? 'bg-emerald-950/90 text-emerald-300 border-emerald-500/40'
+                : notifPermission === 'denied'
+                ? 'bg-red-950/90 text-red-300 border-red-500/40'
+                : 'bg-amber-950/90 text-amber-300 border-amber-500/40'
+            }`}>
+              {notifPermission === 'granted' ? 'Ringing Active' : notifPermission === 'denied' ? 'Blocked' : 'Permission Required'}
+            </span>
+          </div>
+
+          <p className="text-xs text-zinc-400 mb-3 leading-relaxed">
+            Allows the browser to ring with realistic telephony audio and push alerts when an incoming call arrives from another device.
+          </p>
+
+          <div className="flex items-center gap-2">
+            {notifPermission !== 'granted' && (
+              <button
+                onClick={handleRequestPermission}
+                className="px-3.5 py-1.5 bg-teal-600 hover:bg-teal-500 text-white rounded-xl text-xs font-bold shadow-md flex items-center gap-1.5 cursor-pointer"
+              >
+                <Bell className="w-3.5 h-3.5" />
+                <span>Grant Notification Permission</span>
+              </button>
+            )}
+
+            {onTestWhatsAppCall && (
+              <button
+                onClick={() => {
+                  onClose();
+                  onTestWhatsAppCall();
+                }}
+                className="px-3.5 py-1.5 bg-[#1a1a20] hover:bg-[#25252c] border border-zinc-700 text-emerald-300 rounded-xl text-xs font-semibold flex items-center gap-1.5 cursor-pointer"
+              >
+                <Volume2 className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Simulate Full WhatsApp Call Test</span>
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* 3. Ringtone Synthesizer Selection */}
         <div className="mb-5">
           <label className="text-xs font-semibold text-zinc-300 uppercase tracking-wider block mb-2">
             Incoming Call Ringtone
@@ -235,7 +295,7 @@ export const DeviceSettingsModal: React.FC<DeviceSettingsModalProps> = ({
           </div>
         </div>
 
-        {/* 3. Audio & Mic Sensor Meter */}
+        {/* 4. Audio & Mic Sensor Meter */}
         <div className="mb-5 p-3.5 bg-[#0c0c0e] rounded-2xl border border-zinc-800">
           <div className="flex items-center justify-between mb-2">
             <span className="text-xs font-medium text-zinc-300 flex items-center gap-1.5">
@@ -252,7 +312,7 @@ export const DeviceSettingsModal: React.FC<DeviceSettingsModalProps> = ({
           </div>
         </div>
 
-        {/* 4. Reset All Accounts & Data Option */}
+        {/* 5. Reset All Accounts & Data Option */}
         <div className="mb-5 p-3.5 bg-red-950/20 border border-red-500/20 rounded-2xl flex items-center justify-between">
           <div>
             <span className="text-xs font-bold text-red-300 block">Reset All Accounts & History</span>
@@ -287,3 +347,4 @@ export const DeviceSettingsModal: React.FC<DeviceSettingsModalProps> = ({
     </div>
   );
 };
+

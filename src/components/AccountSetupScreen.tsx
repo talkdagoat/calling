@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
-import { ShieldCheck, HardDrive, User, ArrowRight, Lock, CheckCircle2 } from 'lucide-react';
+import { ShieldCheck, HardDrive, User, ArrowRight, Lock, CheckCircle2, BellRing } from 'lucide-react';
 import { UserIdentity } from '../types';
 import { googleDriveService } from '../utils/googleDriveSync';
+import { notificationEngine } from '../utils/notificationEngine';
+import { ringEngine } from '../utils/audioRingEngine';
 
 interface AccountSetupScreenProps {
   onCompleteSetup: (name: string) => void;
@@ -9,12 +11,25 @@ interface AccountSetupScreenProps {
 
 export const AccountSetupScreen: React.FC<AccountSetupScreenProps> = ({ onCompleteSetup }) => {
   const [nameInput, setNameInput] = useState('');
+  const [enableNotifications, setEnableNotifications] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!nameInput.trim()) return;
     setIsSubmitting(true);
+
+    // Unlock Web Audio immediately on user gesture
+    ringEngine.unlockAudio();
+
+    if (enableNotifications) {
+      try {
+        await notificationEngine.requestNotificationPermission();
+      } catch (err) {
+        console.warn('Notification permission error during setup:', err);
+      }
+    }
+
     onCompleteSetup(nameInput.trim());
   };
 
@@ -65,6 +80,25 @@ export const AccountSetupScreen: React.FC<AccountSetupScreenProps> = ({ onComple
             </p>
           </div>
 
+          {/* WhatsApp-Style Ringing & Notification Checkbox */}
+          <label className="flex items-start gap-3 p-3.5 bg-[#0c0c0e] border border-teal-500/30 rounded-2xl cursor-pointer hover:bg-[#121218] transition-colors">
+            <input
+              type="checkbox"
+              checked={enableNotifications}
+              onChange={(e) => setEnableNotifications(e.target.checked)}
+              className="mt-1 w-4 h-4 rounded accent-emerald-500 cursor-pointer"
+            />
+            <div className="text-xs text-zinc-300">
+              <span className="font-bold text-emerald-300 flex items-center gap-1.5 mb-0.5">
+                <BellRing className="w-3.5 h-3.5 text-emerald-400" />
+                Enable WhatsApp-style Desktop Ringing & Notifications
+              </span>
+              <span className="text-[11px] text-zinc-400 leading-snug block">
+                Allows the browser to ring with audio alerts when an incoming encrypted call arrives.
+              </span>
+            </div>
+          </label>
+
           {/* Drive info card */}
           <div className="p-3.5 bg-[#0c0c0e] border border-zinc-800 rounded-2xl flex items-start gap-3">
             <HardDrive className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
@@ -105,3 +139,4 @@ export const AccountSetupScreen: React.FC<AccountSetupScreenProps> = ({ onComple
     </div>
   );
 };
+

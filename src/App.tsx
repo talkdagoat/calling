@@ -18,6 +18,7 @@ import { notificationEngine } from './utils/notificationEngine';
 import { registerUserInFirestore, testFirestoreConnection } from './lib/firebase';
 
 import { Navbar } from './components/Navbar';
+import { WhatsAppNotificationBanner } from './components/WhatsAppNotificationBanner';
 import { AccountSetupScreen } from './components/AccountSetupScreen';
 import { ContactsManager } from './components/ContactsManager';
 import { CallHistoryView } from './components/CallHistoryView';
@@ -962,6 +963,58 @@ export default function App() {
     }
   };
 
+  // Simulate an authentic WhatsApp-style incoming call for test/demo purposes
+  const handleTriggerTestIncomingCall = () => {
+    const testCallId = `test_${Date.now()}`;
+    const testCaller: UserIdentity = {
+      id: 'bot_whatsapp_test',
+      name: 'WhatsApp Call Test Bot',
+      email: 'testbot@talk.io',
+      phone: '+1 (555) 019-2831',
+      avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+      deviceId: 'device_test_bot',
+      deviceName: 'Pixel 9 Pro (WhatsApp Test)',
+      publicKeyFingerprint: 'A1B2 C3D4 E5F6 7890 1234',
+    };
+
+    const simulatedCall: CallSession = {
+      id: testCallId,
+      type: 'audio',
+      status: 'incoming',
+      caller: testCaller,
+      roomId: `room_${testCallId}`,
+      roomName: 'WhatsApp Verification Test',
+      participants: [
+        {
+          id: testCaller.id,
+          userId: testCaller.id,
+          deviceId: testCaller.deviceId,
+          name: testCaller.name,
+          avatar: testCaller.avatar,
+          isMuted: false,
+          isVideoOff: true,
+        },
+      ],
+      duration: 0,
+      e2eeStatus: 'verified',
+      safetyNumber: '77291 00394 18294 59102',
+      isMuted: false,
+      isVideoOff: true,
+      isScreenSharing: false,
+      isRecording: false,
+      isSpeakerOn: true,
+    };
+
+    setIncomingCall(simulatedCall);
+    ringEngine.unlockAudio();
+    ringEngine.startIncomingRing(ringtoneConfig.ringtoneType);
+    notificationEngine.triggerIncomingCallAlert(
+      testCaller.name,
+      'audio',
+      testCallId
+    );
+  };
+
   if (!hasAccount) {
     return <AccountSetupScreen onCompleteSetup={handleCompleteAccountSetup} />;
   }
@@ -979,6 +1032,9 @@ export default function App() {
         }}
         isOnline={isWsConnected}
       />
+
+      {/* WhatsApp Desktop Notification Banner */}
+      <WhatsAppNotificationBanner onTriggerTestCall={handleTriggerTestIncomingCall} />
 
       {/* Main View Router */}
       <main className="flex-1 overflow-y-auto">
@@ -1076,6 +1132,7 @@ export default function App() {
         onUpdateIdentityName={handleUpdateIdentityName}
         onLogOut={handleLogOut}
         onResetAllData={handleResetAllData}
+        onTestWhatsAppCall={handleTriggerTestIncomingCall}
       />
     </div>
   );
