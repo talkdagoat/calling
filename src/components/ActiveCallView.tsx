@@ -15,11 +15,13 @@ interface ActiveCallViewProps {
   onSimulateAnswer?: () => void;
   onToggleMute: () => void;
   onToggleVideo: () => void;
+  onToggleSpeaker: () => void;
   onToggleScreenShare: () => void;
   onSendMessage: (text: string) => void;
   messages: InCallMessage[];
   onRaiseHand: () => void;
   onSendReaction: (emoji: string) => void;
+  remoteStream?: MediaStream | null;
 }
 
 export const ActiveCallView: React.FC<ActiveCallViewProps> = ({
@@ -28,11 +30,13 @@ export const ActiveCallView: React.FC<ActiveCallViewProps> = ({
   onSimulateAnswer,
   onToggleMute,
   onToggleVideo,
+  onToggleSpeaker,
   onToggleScreenShare,
   onSendMessage,
   messages,
   onRaiseHand,
   onSendReaction,
+  remoteStream,
 }) => {
   const [activeTab, setActiveTab] = useState<'none' | 'chat' | 'participants'>('none');
   const [chatInput, setChatInput] = useState('');
@@ -46,6 +50,7 @@ export const ActiveCallView: React.FC<ActiveCallViewProps> = ({
 
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
+  const remoteAudioSinkRef = useRef<HTMLAudioElement>(null);
   const screenVideoRef = useRef<HTMLVideoElement>(null);
 
   // Format call duration
@@ -60,7 +65,7 @@ export const ActiveCallView: React.FC<ActiveCallViewProps> = ({
     let animId: number;
     const updateWaves = () => {
       const vol = mediaManager.getAudioVolume();
-      const multiplier = call.isMuted ? 0.05 : Math.max(0.15, vol / 100);
+      const multiplier = call.isMuted ? 0.05 : Math.max(0.2, vol / 100);
       setAudioWaves([
         Math.min(100, Math.floor(20 * multiplier + Math.random() * 25 * multiplier)),
         Math.min(100, Math.floor(40 * multiplier + Math.random() * 40 * multiplier)),
@@ -81,18 +86,34 @@ export const ActiveCallView: React.FC<ActiveCallViewProps> = ({
     return () => cancelAnimationFrame(animId);
   }, [call.isMuted]);
 
-  // Hook up video streams to HTML elements
+  // Hook up audio sink & speaker output
+  useEffect(() => {
+    if (remoteAudioSinkRef.current) {
+      mediaManager.attachRemoteAudioSink(remoteAudioSinkRef.current);
+    }
+  }, []);
+
+  useEffect(() => {
+    mediaManager.setSpeakerEnabled(call.isSpeakerOn);
+  }, [call.isSpeakerOn]);
+
+  // Hook up local and remote media streams to video elements
   useEffect(() => {
     const setupStreams = async () => {
-      if (call.type !== 'audio' || call.isScreenSharing) {
-        const stream = await mediaManager.getLocalMedia(!call.isVideoOff, !call.isMuted);
-        if (localVideoRef.current && stream) {
-          localVideoRef.current.srcObject = stream;
-        }
+      const hasVideo = call.type !== 'audio' && !call.isVideoOff;
+      const stream = await mediaManager.getLocalMedia(hasVideo, !call.isMuted);
+      if (localVideoRef.current && stream && hasVideo) {
+        localVideoRef.current.srcObject = stream;
       }
     };
     setupStreams();
   }, [call.isVideoOff, call.isMuted, call.type, call.isScreenSharing]);
+
+  useEffect(() => {
+    if (remoteVideoRef.current && (remoteStream || mediaManager.getRemoteStream())) {
+      remoteVideoRef.current.srcObject = remoteStream || mediaManager.getRemoteStream();
+    }
+  }, [remoteStream]);
 
   // Recording toggle
   const handleToggleRecording = () => {
@@ -556,6 +577,20 @@ export const ActiveCallView: React.FC<ActiveCallViewProps> = ({
           </button>
         )}
 
+        {/* Speaker / Loudspeaker Toggle */}
+        <button
+          id="active-call-toggle-speaker-btn"
+          onClick={onToggleSpeaker}
+          className={`p-3.5 rounded-2xl border transition-all active:scale-95 shadow-xs ${
+            call.isSpeakerOn
+              ? 'bg-emerald-600/20 text-emerald-400 border-emerald-500/40 hover:bg-emerald-600 hover:text-white'
+              : 'bg-red-600/20 text-red-400 border-red-500/40 hover:bg-red-600 hover:text-white'
+          }`}
+          title={call.isSpeakerOn ? 'Speaker is Loud (Click to Mute Audio)' : 'Speaker is Muted (Click to Turn On Loudspeaker)'}
+        >
+          {call.isSpeakerOn ? <Volume2 className="w-5 h-5" /> : <VolumeX className="w-5 h-5" />}
+        </button>
+
         {/* Raise Hand */}
         <button
           onClick={onRaiseHand}
@@ -602,6 +637,9 @@ export const ActiveCallView: React.FC<ActiveCallViewProps> = ({
           <PhoneOff className="w-5 h-5" />
         </button>
       </div>
+
+      {/* Hidden Audio Sink for Remote WebRTC Voice Playback & Speaker */}
+      <audio ref={remoteAudioSinkRef} autoPlay playsInline className="hidden" />
 
       {/* Safety Number Verification Modal */}
       <E2EESafetyModal

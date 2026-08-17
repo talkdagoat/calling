@@ -108,6 +108,7 @@ export default function App() {
   const [activeCall, setActiveCall] = useState<CallSession | null>(null);
   const [incomingCall, setIncomingCall] = useState<CallSession | null>(null);
   const [inCallMessages, setInCallMessages] = useState<InCallMessage[]>([]);
+  const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
 
   // Real-time WebSocket Connectivity State
   const [isWsConnected, setIsWsConnected] = useState(false);
@@ -429,6 +430,60 @@ export default function App() {
                   startTime: Date.now(),
                 };
               });
+
+              // Create WebRTC Offer for remote peer
+              mediaManager.createOffer().then((offer) => {
+                if (offer && wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+                  wsRef.current.send(
+                    JSON.stringify({
+                      type: 'webrtc:offer',
+                      callId: msg.callId,
+                      roomId: msg.roomId,
+                      sender: identity,
+                      targetUserId: msg.sender?.id,
+                      targetUserName: msg.sender?.name,
+                      payload: { sdp: offer },
+                      timestamp: Date.now(),
+                    })
+                  );
+                }
+              });
+              break;
+            }
+
+            case 'webrtc:offer': {
+              if (msg.payload?.sdp) {
+                mediaManager.handleOffer(msg.payload.sdp).then((answer) => {
+                  if (answer && wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+                    wsRef.current.send(
+                      JSON.stringify({
+                        type: 'webrtc:answer',
+                        callId: msg.callId,
+                        roomId: msg.roomId,
+                        sender: identity,
+                        targetUserId: msg.sender?.id,
+                        targetUserName: msg.sender?.name,
+                        payload: { sdp: answer },
+                        timestamp: Date.now(),
+                      })
+                    );
+                  }
+                });
+              }
+              break;
+            }
+
+            case 'webrtc:answer': {
+              if (msg.payload?.sdp) {
+                mediaManager.handleAnswer(msg.payload.sdp);
+              }
+              break;
+            }
+
+            case 'webrtc:ice': {
+              if (msg.payload?.candidate) {
+                mediaManager.addIceCandidate(msg.payload.candidate);
+              }
               break;
             }
 
@@ -510,6 +565,30 @@ export default function App() {
       contact.publicKeyFingerprint
     );
 
+    // Initialize local audio/video media and WebRTC peer connection
+    await mediaManager.getLocalMedia(type === 'video', true);
+    mediaManager.createPeerConnection(
+      (stream) => {
+        setRemoteStream(stream);
+      },
+      (candidate) => {
+        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+          wsRef.current.send(
+            JSON.stringify({
+              type: 'webrtc:ice',
+              callId,
+              roomId: `room_${callId}`,
+              sender: identity,
+              targetUserId: contact.id,
+              targetUserName: contact.name,
+              payload: { candidate },
+              timestamp: Date.now(),
+            })
+          );
+        }
+      }
+    );
+
     const newCall: CallSession = {
       id: callId,
       type,
@@ -567,10 +646,11 @@ export default function App() {
   };
 
   // Allow caller to manually simulate answer if doing a quick solo preview/demo
-  const handleSimulateAnswer = () => {
+  const handleSimulateAnswer = async () => {
     if (!activeCall || activeCall.status !== 'outgoing') return;
     ringEngine.stopAll();
     ringEngine.playConnectedTone();
+    await mediaManager.getLocalMedia(activeCall.type === 'video', true);
     setActiveCall((current) => {
       if (!current) return null;
       return {
@@ -585,6 +665,7 @@ export default function App() {
   const handleStartGroupCall = async (roomId: string, roomName: string) => {
     const callId = `group_${Date.now()}`;
     const safetyNumber = await generateSafetyNumber(identity.publicKeyFingerprint, roomId);
+    await mediaManager.getLocalMedia(false, true);
 
     const newCall: CallSession = {
       id: callId,
@@ -633,11 +714,36 @@ export default function App() {
   };
 
   // Answer Incoming Call
-  const handleAnswerCall = (type: CallType) => {
+  const handleAnswerCall = async (type: CallType) => {
     if (!incomingCall) return;
     ringEngine.stopAll();
     ringEngine.playConnectedTone();
+    ringEngine.unlockAudio();
     notificationEngine.dismissIncomingCallAlert(incomingCall.id);
+
+    // Initialize local media and WebRTC peer connection
+    await mediaManager.getLocalMedia(type === 'video', true);
+    mediaManager.createPeerConnection(
+      (stream) => {
+        setRemoteStream(stream);
+      },
+      (candidate) => {
+        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN && incomingCall) {
+          wsRef.current.send(
+            JSON.stringify({
+              type: 'webrtc:ice',
+              callId: incomingCall.id,
+              roomId: incomingCall.roomId,
+              sender: identity,
+              targetUserId: incomingCall.caller.id,
+              targetUserName: incomingCall.caller.name,
+              payload: { candidate },
+              timestamp: Date.now(),
+            })
+          );
+        }
+      }
+    );
 
     const connectedCall: CallSession = {
       ...incomingCall,
@@ -733,6 +839,7 @@ export default function App() {
   };
 
   const handleCallEndedCleanup = (call: CallSession) => {
+    setRemoteStream(null);
     mediaManager.stopLocalMedia();
 
     // Record in history if connected
@@ -771,6 +878,13 @@ export default function App() {
     setActiveCall({ ...activeCall, isVideoOff: nextVideoOff });
   };
 
+  const handleToggleSpeaker = () => {
+    if (!activeCall) return;
+    const nextSpeaker = !activeCall.isSpeakerOn;
+    mediaManager.setSpeakerEnabled(nextSpeaker);
+    setActiveCall((prev) => (prev ? { ...prev, isSpeakerOn: nextSpeaker } : null));
+  };
+
   const handleToggleScreenShare = async () => {
     if (!activeCall) return;
     if (activeCall.isScreenSharing) {
@@ -781,7 +895,7 @@ export default function App() {
       if (stream) {
         setActiveCall({ ...activeCall, isScreenSharing: true });
         stream.getVideoTracks()[0].onended = () => {
-          setActiveCall((prev) => prev ? { ...prev, isScreenSharing: false } : null);
+          setActiveCall((prev) => (prev ? { ...prev, isScreenSharing: false } : null));
         };
       }
     }
@@ -916,9 +1030,11 @@ export default function App() {
           onSimulateAnswer={handleSimulateAnswer}
           onToggleMute={handleToggleMute}
           onToggleVideo={handleToggleVideo}
+          onToggleSpeaker={handleToggleSpeaker}
           onToggleScreenShare={handleToggleScreenShare}
           onSendMessage={handleSendMessage}
           messages={inCallMessages}
+          remoteStream={remoteStream}
           onRaiseHand={() => {
             if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN && activeCall) {
               wsRef.current.send(

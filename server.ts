@@ -74,6 +74,8 @@ function broadcastPresence() {
 
 // Helper to match target user across connected devices by ID, display name, sanitized username or device
 function matchesTargetClient(clientInfo: ConnectedClient, targetUserId?: string, targetUserName?: string, targetDeviceId?: string): boolean {
+  if (!clientInfo) return false;
+  
   if (targetDeviceId && clientInfo.deviceId === targetDeviceId) {
     return true;
   }
@@ -83,19 +85,32 @@ function matchesTargetClient(clientInfo: ConnectedClient, targetUserId?: string,
   const clientUserIdClean = (clientInfo.userId || '').trim().toLowerCase();
   const clientNameClean = (clientInfo.name || '').trim().toLowerCase();
 
+  // If targetUserId is provided
   if (idClean) {
     if (clientUserIdClean === idClean) return true;
     if (clientNameClean === idClean) return true;
     if (clientUserIdClean.replace(/^user_/, '') === idClean.replace(/^user_/, '')) return true;
     if (clientNameClean.replace(/[^a-z0-9]/g, '') === idClean.replace(/[^a-z0-9]/g, '')) return true;
     if (clientUserIdClean.replace(/[^a-z0-9]/g, '') === idClean.replace(/[^a-z0-9]/g, '')) return true;
+
+    // Handle composite IDs like ownerId_targetUserId
+    if (idClean.includes('_')) {
+      const parts = idClean.split('_');
+      for (const part of parts) {
+        if (part && (clientUserIdClean.includes(part) || clientNameClean.includes(part))) {
+          return true;
+        }
+      }
+    }
   }
 
+  // If targetUserName is provided
   if (nameClean) {
     if (clientNameClean === nameClean) return true;
     if (clientUserIdClean === nameClean) return true;
     if (clientUserIdClean.replace(/^user_/, '').replace(/[^a-z0-9]/g, '') === nameClean.replace(/[^a-z0-9]/g, '')) return true;
     if (clientNameClean.replace(/[^a-z0-9]/g, '') === nameClean.replace(/[^a-z0-9]/g, '')) return true;
+    if (clientNameClean.includes(nameClean) || nameClean.includes(clientNameClean)) return true;
   }
 
   return false;
