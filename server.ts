@@ -89,28 +89,27 @@ function matchesTargetClient(clientInfo: ConnectedClient, targetUserId?: string,
   if (idClean) {
     if (clientUserIdClean === idClean) return true;
     if (clientNameClean === idClean) return true;
-    if (clientUserIdClean.replace(/^user_/, '') === idClean.replace(/^user_/, '')) return true;
-    if (clientNameClean.replace(/[^a-z0-9]/g, '') === idClean.replace(/[^a-z0-9]/g, '')) return true;
-    if (clientUserIdClean.replace(/[^a-z0-9]/g, '') === idClean.replace(/[^a-z0-9]/g, '')) return true;
-
-    // Handle composite IDs like ownerId_targetUserId
-    if (idClean.includes('_')) {
-      const parts = idClean.split('_');
-      for (const part of parts) {
-        if (part && (clientUserIdClean.includes(part) || clientNameClean.includes(part))) {
-          return true;
-        }
-      }
-    }
+    
+    // Strip user_ prefixes and trailing timestamps for safe comparison
+    const safeTargetId = idClean.replace(/^user_/, '').replace(/_[0-9]+$/, '').replace(/[^a-z0-9]/g, '');
+    const safeClientId = clientUserIdClean.replace(/^user_/, '').replace(/_[0-9]+$/, '').replace(/[^a-z0-9]/g, '');
+    const safeClientName = clientNameClean.replace(/[^a-z0-9]/g, '');
+    
+    if (safeTargetId && safeClientId && safeTargetId === safeClientId) return true;
+    if (safeTargetId && safeClientName && safeTargetId === safeClientName) return true;
   }
 
   // If targetUserName is provided
   if (nameClean) {
     if (clientNameClean === nameClean) return true;
     if (clientUserIdClean === nameClean) return true;
-    if (clientUserIdClean.replace(/^user_/, '').replace(/[^a-z0-9]/g, '') === nameClean.replace(/[^a-z0-9]/g, '')) return true;
-    if (clientNameClean.replace(/[^a-z0-9]/g, '') === nameClean.replace(/[^a-z0-9]/g, '')) return true;
-    if (clientNameClean.includes(nameClean) || nameClean.includes(clientNameClean)) return true;
+    
+    const safeTargetName = nameClean.replace(/[^a-z0-9]/g, '');
+    const safeClientName = clientNameClean.replace(/[^a-z0-9]/g, '');
+    const safeClientId = clientUserIdClean.replace(/^user_/, '').replace(/_[0-9]+$/, '').replace(/[^a-z0-9]/g, '');
+    
+    if (safeTargetName && safeClientName && safeClientName === safeTargetName) return true;
+    if (safeTargetName && safeClientId && safeClientId === safeTargetName) return true;
   }
 
   return false;

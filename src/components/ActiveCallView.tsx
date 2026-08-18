@@ -379,11 +379,20 @@ export const ActiveCallView: React.FC<ActiveCallViewProps> = ({
             <div id="video-conference-stage" className="w-full h-full grid grid-cols-1 md:grid-cols-2 gap-4 max-w-6xl mx-auto">
               {/* Participant Tile 1 (Remote Peer / Main Speaker) */}
               <div className="relative bg-[#121216] border border-zinc-800/80 rounded-3xl overflow-hidden shadow-2xl shadow-black/50 flex items-center justify-center group">
-                <img
-                  src={targetAvatar}
-                  alt={targetName}
-                  className="w-full h-full object-cover"
-                />
+                {remoteStream && remoteStream.getVideoTracks().length > 0 ? (
+                  <video
+                    ref={remoteVideoRef}
+                    autoPlay
+                    playsInline
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <img
+                    src={targetAvatar}
+                    alt={targetName}
+                    className="w-full h-full object-cover"
+                  />
+                )}
                 
                 {/* Active speaker border indicator */}
                 <div className="absolute inset-0 border-2 border-emerald-500/60 pointer-events-none rounded-3xl" />
@@ -531,6 +540,9 @@ export const ActiveCallView: React.FC<ActiveCallViewProps> = ({
 
       {/* Bottom Floating Control Dock */}
       <div className="h-20 bg-[#121216]/95 border-t border-zinc-800/80 flex items-center justify-center gap-3 px-6 z-20 backdrop-blur-xl shadow-2xl shadow-black/60">
+        {/* Remote Audio Output Sink */}
+        <audio ref={remoteAudioSinkRef} autoPlay playsInline hidden />
+
         {/* Mute Mic */}
         <button
           id="active-call-toggle-mic-btn"

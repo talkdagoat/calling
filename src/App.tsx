@@ -528,6 +528,26 @@ export default function App() {
               }
               break;
             }
+
+            case 'call:status': {
+              if (msg.targetDevicesFound === 0) {
+                // User is offline or unreachable
+                ringEngine.stopAll();
+                notificationEngine.dismissIncomingCallAlert(msg.callId);
+                
+                setActiveCall((prev) => {
+                  if (prev?.id === msg.callId && prev.status === 'outgoing') {
+                    // Force cleanup directly to avoid stale state in handleCallEndedCleanup
+                    setRemoteStream(null);
+                    mediaManager.stopLocalMedia();
+                    setGlobalError(`User ${msg.targetUserName || 'User'} is currently offline. They will be notified of the missed call when they reconnect.`);
+                    return null;
+                  }
+                  return prev;
+                });
+              }
+              break;
+            }
           }
         } catch (e) {
           console.error('WS message error:', e);
