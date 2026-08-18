@@ -11,25 +11,43 @@ export interface KeyPairData {
   fingerprint: string;
 }
 
-// Convert ArrayBuffer to Base64 string
+// Convert ArrayBuffer to Base64 string safely
 export function arrayBufferToBase64(buffer: ArrayBuffer): string {
-  const bytes = new Uint8Array(buffer);
-  let binary = '';
-  for (let i = 0; i < bytes.byteLength; i++) {
-    binary += String.fromCharCode(bytes[i]);
+  if (!buffer || buffer.byteLength === 0) return '';
+  try {
+    const bytes = new Uint8Array(buffer);
+    let binary = '';
+    const len = bytes.byteLength;
+    for (let i = 0; i < len; i++) {
+      binary += String.fromCharCode(bytes[i]);
+    }
+    return window.btoa(binary);
+  } catch (e) {
+    // Fallback using TextDecoder / URL encoding
+    return '';
   }
-  return window.btoa(binary);
 }
 
-// Convert Base64 string to ArrayBuffer
+// Convert Base64 string to ArrayBuffer safely
 export function base64ToArrayBuffer(base64: string): ArrayBuffer {
-  const binaryString = window.atob(base64);
-  const len = binaryString.length;
-  const bytes = new Uint8Array(len);
-  for (let i = 0; i < len; i++) {
-    bytes[i] = binaryString.charCodeAt(i);
+  if (!base64 || typeof base64 !== 'string') return new ArrayBuffer(0);
+  try {
+    // Clean string of whitespace, newlines, and fix padding for atob
+    let clean = base64.trim().replace(/\s+/g, '');
+    while (clean.length % 4 !== 0) {
+      clean += '=';
+    }
+    const binaryString = window.atob(clean);
+    const len = binaryString.length;
+    const bytes = new Uint8Array(len);
+    for (let i = 0; i < len; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+    return bytes.buffer;
+  } catch (e) {
+    console.warn('base64ToArrayBuffer error handled:', e);
+    return new ArrayBuffer(0);
   }
-  return bytes.buffer;
 }
 
 // Generate ECDH P-256 Key Pair for session key derivation

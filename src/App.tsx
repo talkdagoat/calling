@@ -140,9 +140,12 @@ export default function App() {
 
   // Create or Login Account by Name
   const handleCompleteAccountSetup = async (name: string) => {
-    const cleanName = name.trim();
+    const cleanName = (name || '').trim();
+    if (!cleanName) return;
+
+    const safeId = `user_${cleanName.toLowerCase().replace(/[^a-zA-Z0-9_-]/g, '_')}`;
     const newIdentity: UserIdentity = {
-      id: `user_${cleanName.toLowerCase().replace(/[^a-z0-9]/g, '_')}`,
+      id: safeId,
       name: cleanName,
       email: `${cleanName.toLowerCase().replace(/[^a-z0-9]/g, '')}@talk.io`,
       phone: '',
@@ -150,18 +153,28 @@ export default function App() {
       deviceId: `device_${Math.random().toString(36).substring(2, 9)}`,
       deviceName: 'Primary Device',
       publicKeyFingerprint: cryptoKeys?.fingerprint || '4E9A B7C2 91F0 33DA 8201',
-      publicKeyBase64: cryptoKeys?.publicKeyBase64,
+      publicKeyBase64: cryptoKeys?.publicKeyBase64 || '',
     };
 
+    // 1. Immediately store identity and mark account as active
+    localStorage.setItem(STORAGE_KEY_USER_NAME, cleanName);
+    localStorage.setItem(STORAGE_KEY_IDENTITY, JSON.stringify(newIdentity));
+    setIdentity(newIdentity);
+    setHasAccount(true);
+
+    // 2. Perform Firestore & Central SQL Server Sync
     try {
-      // Register in Firestore online database
       await registerUserInFirestore({
         id: newIdentity.id,
         name: cleanName,
         avatar: newIdentity.avatar,
         publicKeyFingerprint: newIdentity.publicKeyFingerprint,
       });
+    } catch (e) {
+      console.warn('Firestore registration sync deferred:', e);
+    }
 
+    try {
       const res = await fetch('/api/users/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -175,11 +188,13 @@ export default function App() {
         const data = await res.json();
         if (data.user?.id) {
           newIdentity.id = data.user.id;
+          localStorage.setItem(STORAGE_KEY_IDENTITY, JSON.stringify(newIdentity));
+          setIdentity({ ...newIdentity });
         }
       }
 
       // Fetch user's existing contacts and history if any
-      const dataRes = await fetch(`/api/data/${newIdentity.id}`);
+      const dataRes = await fetch(`/api/data/${encodeURIComponent(newIdentity.id)}`);
       if (dataRes.ok) {
         const serverData = await dataRes.json();
         if (Array.isArray(serverData.contacts) && serverData.contacts.length > 0) {
@@ -192,13 +207,8 @@ export default function App() {
         }
       }
     } catch (e) {
-      console.error('Registration server sync error:', e);
+      console.warn('Server registration sync handled:', e);
     }
-
-    localStorage.setItem(STORAGE_KEY_USER_NAME, cleanName);
-    localStorage.setItem(STORAGE_KEY_IDENTITY, JSON.stringify(newIdentity));
-    setIdentity(newIdentity);
-    setHasAccount(true);
 
     triggerCentralServerSync(contacts, callHistory, newIdentity);
   };

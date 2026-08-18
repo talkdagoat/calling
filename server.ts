@@ -467,6 +467,17 @@ app.delete('/api/contacts/:userId/:targetId', (req, res) => {
   }
 });
 
+// Get user contacts and history
+app.get('/api/data/:userId', (req, res) => {
+  try {
+    const { userId } = req.params;
+    const contacts = getContactsForUserSQL(userId);
+    res.json({ contacts, callHistory: [] });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch user data', contacts: [], callHistory: [] });
+  }
+});
+
 // Legacy Sync Endpoint (Backed by SQL)
 app.post('/api/data/sync', (req, res) => {
   try {
