@@ -47,6 +47,7 @@ export const ActiveCallView: React.FC<ActiveCallViewProps> = ({
   const [recordedChunks, setRecordedChunks] = useState<Blob[]>([]);
   const [reactions, setReactions] = useState<Array<{ id: number; emoji: string; x: number }>>([]);
   const [audioWaves, setAudioWaves] = useState<number[]>([15, 25, 45, 80, 50, 30, 65, 40, 20, 55, 75, 30]);
+  const [trackCount, setTrackCount] = useState(0);
 
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
@@ -112,6 +113,18 @@ export const ActiveCallView: React.FC<ActiveCallViewProps> = ({
   useEffect(() => {
     if (remoteVideoRef.current && (remoteStream || mediaManager.getRemoteStream())) {
       remoteVideoRef.current.srcObject = remoteStream || mediaManager.getRemoteStream();
+    }
+    
+    // Trigger visual hide/show of the video element based on active track count
+    if (remoteStream) {
+      setTrackCount(remoteStream.getVideoTracks().length);
+      const updateTracks = () => setTrackCount(remoteStream.getVideoTracks().length);
+      remoteStream.addEventListener('addtrack', updateTracks);
+      remoteStream.addEventListener('removetrack', updateTracks);
+      return () => {
+        remoteStream.removeEventListener('addtrack', updateTracks);
+        remoteStream.removeEventListener('removetrack', updateTracks);
+      };
     }
   }, [remoteStream]);
 
@@ -379,20 +392,17 @@ export const ActiveCallView: React.FC<ActiveCallViewProps> = ({
             <div id="video-conference-stage" className="w-full h-full grid grid-cols-1 md:grid-cols-2 gap-4 max-w-6xl mx-auto">
               {/* Participant Tile 1 (Remote Peer / Main Speaker) */}
               <div className="relative bg-[#121216] border border-zinc-800/80 rounded-3xl overflow-hidden shadow-2xl shadow-black/50 flex items-center justify-center group">
-                {remoteStream && remoteStream.getVideoTracks().length > 0 ? (
-                  <video
-                    ref={remoteVideoRef}
-                    autoPlay
-                    playsInline
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <img
-                    src={targetAvatar}
-                    alt={targetName}
-                    className="w-full h-full object-cover"
-                  />
-                )}
+                <video
+                  ref={remoteVideoRef}
+                  autoPlay
+                  playsInline
+                  className={`w-full h-full object-cover ${trackCount > 0 ? '' : 'hidden'}`}
+                />
+                <img
+                  src={targetAvatar}
+                  alt={targetName}
+                  className={`w-full h-full object-cover ${trackCount > 0 ? 'hidden' : ''}`}
+                />
                 
                 {/* Active speaker border indicator */}
                 <div className="absolute inset-0 border-2 border-emerald-500/60 pointer-events-none rounded-3xl" />
