@@ -202,6 +202,14 @@ export class WebRTCManager {
     const pc = new RTCPeerConnection(RTC_CONFIG);
     this.peerConnection = pc;
 
+    this.remoteStream = new MediaStream();
+    onRemoteStream(this.remoteStream);
+
+    if (this.remoteAudioElement) {
+      this.remoteAudioElement.srcObject = this.remoteStream;
+      this.remoteAudioElement.play().catch(e => console.warn('Remote audio autoplay waiting for user gesture:', e));
+    }
+
     // Attach local stream tracks
     if (this.localStream) {
       this.localStream.getTracks().forEach(track => {
@@ -210,15 +218,9 @@ export class WebRTCManager {
     }
 
     pc.ontrack = (event) => {
-      console.log('[WebRTC] Received remote track:', event.track.kind, event.streams);
-      const stream = event.streams[0] || new MediaStream([event.track]);
-      this.remoteStream = stream;
-      onRemoteStream(stream);
-
-      // If remote audio element is attached, connect stream
-      if (this.remoteAudioElement) {
-        this.remoteAudioElement.srcObject = stream;
-        this.remoteAudioElement.play().catch(e => console.warn('Remote audio autoplay waiting for user gesture:', e));
+      console.log('[WebRTC] Received remote track:', event.track.kind);
+      if (this.remoteStream) {
+        this.remoteStream.addTrack(event.track);
       }
     };
 

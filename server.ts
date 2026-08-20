@@ -289,9 +289,10 @@ wss.on('connection', (ws: WebSocket) => {
         case 'webrtc:answer':
         case 'webrtc:ice': {
           let routed = false;
-          // Exact targetUserId matching guarantees points-to-point delivery
+          const targetName = targetUserName || payload?.targetUserName || '';
+          
           for (const [clientWs, clientInfo] of clients.entries()) {
-            if (clientWs !== ws && targetUserId && clientInfo.userId === targetUserId) {
+            if (clientWs !== ws && matchesTargetClient(clientInfo, targetUserId, targetName, targetDeviceId)) {
               if (clientWs.readyState === WebSocket.OPEN) {
                 clientWs.send(JSON.stringify({
                   type,
@@ -307,7 +308,7 @@ wss.on('connection', (ws: WebSocket) => {
           }
           
           if (!routed) {
-            console.warn(`[WebRTC] Failed to route ${type} to targetUserId: ${targetUserId}`);
+            console.warn(`[WebRTC] Failed to route ${type} to targetUserId: ${targetUserId} / name: ${targetName}`);
           }
           break;
         }
