@@ -42,6 +42,7 @@ interface ConnectedClient {
   avatar: string;
   publicKeyFingerprint: string;
   roomId?: string;
+  simpleRoom?: string;
   inCallWith?: string;
 }
 
@@ -147,6 +148,42 @@ wss.on('connection', (ws: WebSocket) => {
             activeConnectedDevices: clients.size,
             timestamp: Date.now(),
           }));
+          break;
+        }
+
+        case 'join': {
+          const senderInfo = clients.get(ws);
+          if (!senderInfo) break;
+          const simpleRoom = typeof roomId === 'string' && roomId.trim() ? roomId.trim() : 'goat-default';
+          senderInfo.simpleRoom = simpleRoom;
+          const existing = Array.from(clients.values())
+            .filter(c => c.ws !== ws && c.simpleRoom === simpleRoom)
+            .map(c => ({ name: c.deviceName || c.name || 'Device' }));
+          ws.send(JSON.stringify({ type: 'joined', room: simpleRoom, name: senderInfo.deviceName || senderInfo.name, peers: existing, timestamp: Date.now() }));
+          for (const p of existing) {
+            ws.send(JSON.stringify({ type: 'peer', name: p.name, timestamp: Date.now() }));
+          }
+          for (const [clientWs, clientInfo] of clients.entries()) {
+            if (clientWs !== ws && clientInfo.simpleRoom === simpleRoom && clientWs.readyState === WebSocket.OPEN) {
+              clientWs.send(JSON.stringify({ type: 'peer', name: senderInfo.deviceName || senderInfo.name, timestamp: Date.now() }));
+            }
+          }
+          break;
+        }
+
+        case 'start':
+        case 'offer':
+        case 'answer':
+        case 'ice':
+        case 'hangup': {
+          const senderInfo = clients.get(ws);
+          if (!senderInfo) break;
+          const simpleRoom = senderInfo.simpleRoom || roomId || 'goat-default';
+          for (const [clientWs, clientInfo] of clients.entries()) {
+            if (clientWs !== ws && clientInfo.simpleRoom === simpleRoom && clientWs.readyState === WebSocket.OPEN) {
+              clientWs.send(JSON.stringify({ ...data, from: senderInfo.deviceName || senderInfo.name, timestamp: Date.now() }));
+            }
+          }
           break;
         }
 
