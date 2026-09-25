@@ -10,6 +10,8 @@ type SlackMessage = {
   senderName: string;
   avatar?: string;
   isMine: boolean;
+  kind?: 'message' | 'call';
+  callType?: 'audio' | 'video';
 };
 
 interface SlackChatProps {
@@ -25,6 +27,7 @@ export const SlackChat: React.FC<SlackChatProps> = ({ identity, contacts, onCall
   const [selectedContactId, setSelectedContactId] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [startingCall, setStartingCall] = useState<string>('');
   const [error, setError] = useState('');
   const endRef = useRef<HTMLDivElement | null>(null);
 
@@ -38,14 +41,44 @@ export const SlackChat: React.FC<SlackChatProps> = ({ identity, contacts, onCall
       const response = await fetch('/api/slack/messages');
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Unable to load Slack messages');
-      setMessages(Array.isArray(data.messages) ? data.messages : []);
+      const loaded = Array.isArray(data.messages) ? data.messages : [];
+      setMessages(loaded.map((message: SlackMessage) => ({
+        ...message,
+        isMine: message.senderId === identity.id,
+      })));
       setError('');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to load Slack chat');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [identity.id]);
+
+  const startCall = async (contact: Contact, callType: 'audio' | 'video') => {
+    const key = `${callType}:${contact.id}`;
+    if (startingCall) return;
+    setStartingCall(key);
+    try {
+      const response = await fetch('/api/slack/calls', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          callType,
+          sender: { id: identity.id, name: identity.name, avatar: identity.avatar },
+          target: { id: contact.id, name: contact.name, avatar: contact.avatar },
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Unable to post call event to Slack');
+      setError('');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Slack call event failed; continuing with the call');
+    } finally {
+      setStartingCall('');
+      if (callType === 'video') onVideoCall(contact);
+      else onCall(contact);
+    }
+  };
 
   useEffect(() => {
     loadMessages();
@@ -127,16 +160,16 @@ export const SlackChat: React.FC<SlackChatProps> = ({ identity, contacts, onCall
           {selectedContact && (
             <div className="mt-4 grid grid-cols-2 gap-2">
               <button
-                onClick={() => onCall(selectedContact)}
+                onClick={() => startCall(selectedContact, 'audio')}\n                disabled={startingCall !== ''}
                 className="flex items-center justify-center gap-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white py-2 text-xs font-semibold"
               >
-                <Phone className="w-3.5 h-3.5" /> Call
+                <Phone className="w-3.5 h-3.5" /> {startingCall === `audio:${selectedContact.id}` ? 'Calling…' : 'Call'}
               </button>
               <button
-                onClick={() => onVideoCall(selectedContact)}
+                onClick={() => startCall(selectedContact, 'video')}\n                disabled={startingCall !== ''}
                 className="flex items-center justify-center gap-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white py-2 text-xs font-semibold"
               >
-                <Video className="w-3.5 h-3.5" /> Video
+                <Video className="w-3.5 h-3.5" /> {startingCall === `video:${selectedContact.id}` ? 'Calling…' : 'Video'}
               </button>
             </div>
           )}
@@ -173,15 +206,21 @@ export const SlackChat: React.FC<SlackChatProps> = ({ identity, contacts, onCall
             {messages.map((message) => (
               <div key={message.id} className={`flex ${message.isMine ? 'justify-end' : 'justify-start'}`}>
                 <div className={`max-w-[80%] rounded-2xl px-4 py-2.5 ${
-                  message.isMine
-                    ? 'bg-emerald-600 text-white rounded-br-md'
-                    : 'bg-zinc-900 border border-zinc-800 text-zinc-100 rounded-bl-md'
+                  message.kind === 'call'
+                    ? 'bg-indigo-950/70 border border-indigo-500/30 text-indigo-100'
+                    : message.isMine
+                      ? 'bg-emerald-600 text-white rounded-br-md'
+                      : 'bg-zinc-900 border border-zinc-800 text-zinc-100 rounded-bl-md'
                 }`}>
-                  <div className={`text-[10px] font-semibold mb-1 ${message.isMine ? 'text-emerald-100' : 'text-zinc-400'}`}>
-                    {message.senderName}
+                  <div className="flex items-center gap-2 text-[10px] font-semibold mb-1">
+                    {message.kind === 'call' ? (message.callType === 'video' ? <Video className="w-3 h-3" /> : <Phone className="w-3 h-3" />) : null}
+                    <span>{message.senderName}</span>
                   </div>
                   <div className="text-sm whitespace-pre-wrap break-words">{message.text}</div>
-                  <div className={`text-[9px] mt-1 ${message.isMine ? 'text-emerald-100/70' : 'text-zinc-500'}`}>
+                  {message.kind === 'call' && (
+                    <div className="mt-2 text-[10px] text-indigo-200/80">The actual audio/video call uses the app's WebRTC connection.</div>
+                  )}
+                  <div className="text-[9px] mt-1 text-zinc-500">
                     {new Date(Number(message.ts) * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </div>
                 </div>
