@@ -464,6 +464,41 @@ app.get('/api/slack/messages', async (_req, res) => {
   }
 });
 
+app.post('/api/slack/calls', async (req, res) => {
+  try {
+    const sender = req.body?.sender;
+    const target = req.body?.target;
+    const callType = req.body?.callType === 'video' ? 'video' : 'audio';
+
+    if (!sender?.id || !sender?.name || !target?.id || !target?.name) {
+      return res.status(400).json({ error: 'Caller and target identities are required' });
+    }
+
+    const data = await slackApi('chat.postMessage', {
+      channel: SLACK_CHANNEL_ID,
+      text: callType === 'video'
+        ? `📹 ${String(sender.name).slice(0, 80)} started a video call with ${String(target.name).slice(0, 80)}.`
+        : `📞 ${String(sender.name).slice(0, 80)} started a call with ${String(target.name).slice(0, 80)}.`,
+      metadata: {
+        event_type: 'talk_call',
+        event_payload: {
+          call_type: callType,
+          caller_id: String(sender.id).slice(0, 120),
+          caller_name: String(sender.name).slice(0, 80),
+          caller_avatar: typeof sender.avatar === 'string' ? sender.avatar.slice(0, 500) : '',
+          target_id: String(target.id).slice(0, 120),
+          target_name: String(target.name).slice(0, 80),
+          target_avatar: typeof target.avatar === 'string' ? target.avatar.slice(0, 500) : '',
+        },
+      },
+    });
+
+    res.json({ ok: true, ts: data.ts });
+  } catch (err) {
+    res.status(503).json({ error: err instanceof Error ? err.message : 'Unable to post Slack call event' });
+  }
+});
+
 app.post('/api/slack/messages', async (req, res) => {
   try {
     const messageText = typeof req.body?.text === 'string' ? req.body.text.trim() : '';
