@@ -447,15 +447,19 @@ app.get('/api/slack/messages', async (_req, res) => {
       .filter((message: any) => message.type === 'message' && !message.subtype)
       .reverse()
       .map((message: any) => {
+        const metadataType = message.metadata?.event_type;
         const payload = message.metadata?.event_payload || {};
+        const isCall = metadataType === 'talk_call';
         return {
           id: message.client_msg_id || message.ts,
           ts: message.ts,
           text: message.text || '',
-          senderId: payload.sender_id || message.user,
-          senderName: payload.display_name || message.username || message.user || 'Slack user',
-          avatar: payload.avatar,
+          senderId: payload.sender_id || payload.caller_id || message.user,
+          senderName: payload.display_name || payload.caller_name || message.username || message.user || 'Slack user',
+          avatar: payload.avatar || payload.caller_avatar,
           isMine: false,
+          kind: isCall ? 'call' : 'message',
+          callType: isCall && payload.call_type === 'video' ? 'video' : 'audio',
         };
       });
     res.json({ messages });
