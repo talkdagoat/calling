@@ -659,7 +659,7 @@ export default function App() {
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
       wsRef.current.send(
         JSON.stringify({
-          type: 'call:invite',
+          type: 'call:incoming',
           callId,
           callType: type,
           sender: identity,
@@ -806,7 +806,7 @@ export default function App() {
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
       wsRef.current.send(
         JSON.stringify({
-          type: 'call:accept',
+          type: 'call:accepted',
           callId: incomingCall.id,
           callType: type,
           sender: identity,
@@ -846,7 +846,7 @@ export default function App() {
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
       wsRef.current.send(
         JSON.stringify({
-          type: 'call:reject',
+          type: 'call:rejected',
           callId: incomingCall.id,
           sender: identity,
           targetUserId: incomingCall.caller.id,
@@ -871,7 +871,7 @@ export default function App() {
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
       wsRef.current.send(
         JSON.stringify({
-          type: 'call:end',
+          type: 'call:ended',
           callId: activeCall.id,
           roomId: activeCall.roomId,
           sender: identity,
