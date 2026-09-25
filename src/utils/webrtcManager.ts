@@ -7,31 +7,45 @@
  * network cannot establish a direct peer connection.
  */
 
+function isValidIceUrl(value: unknown): value is string {
+  return typeof value === 'string' && /^(stun|turn|turns):[^\s]+$/i.test(value.trim());
+}
+
 function getIceServers(): RTCIceServer[] {
+  const fallback: RTCIceServer[] = [
+    { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] },
+  ];
+
   const configured = import.meta.env.VITE_ICE_SERVERS;
   if (configured) {
     try {
       const parsed = JSON.parse(configured);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      if (Array.isArray(parsed)) {
+        const safe = parsed
+          .filter((entry) => entry && typeof entry === 'object')
+          .map((entry) => {
+            const urls = Array.isArray(entry.urls)
+              ? entry.urls.filter(isValidIceUrl)
+              : isValidIceUrl(entry.urls) ? [entry.urls] : [];
+            return urls.length
+              ? { urls, ...(entry.username ? { username: String(entry.username) } : {}), ...(entry.credential ? { credential: String(entry.credential) } : {}) }
+              : null;
+          })
+          .filter(Boolean) as RTCIceServer[];
+        if (safe.length) return safe;
+      }
     } catch (error) {
-      console.warn('[WebRTC] Invalid VITE_ICE_SERVERS JSON:', error);
+      console.warn('[WebRTC] Invalid VITE_ICE_SERVERS JSON; using STUN fallback:', error);
     }
   }
 
-  const servers: RTCIceServer[] = [
-    { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] },
-  ];
-
+  const servers = [...fallback];
   const turnUrl = import.meta.env.VITE_TURN_URL?.trim();
   const turnUsername = import.meta.env.VITE_TURN_USERNAME?.trim();
   const turnCredential = import.meta.env.VITE_TURN_CREDENTIAL?.trim();
 
-  if (turnUrl && turnUsername && turnCredential) {
-    servers.push({
-      urls: turnUrl,
-      username: turnUsername,
-      credential: turnCredential,
-    });
+  if (isValidIceUrl(turnUrl) && turnUsername && turnCredential) {
+    servers.push({ urls: turnUrl, username: turnUsername, credential: turnCredential });
   }
 
   return servers;
@@ -72,11 +86,12 @@ export class WebRTCManager {
     }
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
+      let stream: MediaStream;
+      const constraints: MediaStreamConstraints = {
         video: video ? {
           width: { ideal: 1280 },
           height: { ideal: 720 },
-          facingMode: 'user',
+          facingMode: { ideal: 'user' },
           frameRate: { ideal: 30 },
         } : false,
         audio: audio ? {
@@ -84,7 +99,28 @@ export class WebRTCManager {
           noiseSuppression: true,
           autoGainControl: true,
         } : false,
-      });
+      };
+      try {
+        stream = await navigator.mediaDevices.getUserMedia(constraints);
+      } catch (firstError) {
+        const firstMessage = firstError instanceof Error ? firstError.message : String(firstError);
+        const firstName = firstError instanceof DOMException ? firstError.name : '';
+        if (firstName === 'NotAllowedError' || firstName === 'PermissionDeniedError' ||
+            firstName === 'NotFoundError' || firstName === 'DevicesNotFoundError') {
+          throw firstError;
+        }
+        // Safari can reject otherwise valid advanced constraints with
+        // "The string did not match the expected pattern." Retry with
+        // the simplest interoperable constraints.
+        if (/expected pattern|syntaxerror|overconstrained/i.test(firstMessage)) {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: video ? true : false,
+            audio: audio ? true : false,
+          });
+        } else {
+          throw firstError;
+        }
+      }
 
       this.localStream = stream;
       this.setupAudioAnalyser(stream);
@@ -158,7 +194,16 @@ export class WebRTCManager {
     this.pendingIceCandidates = [];
     this.connectionStateHandler = onConnectionStateChange || null;
 
-    const pc = new RTCPeerConnection(RTC_CONFIG);
+    let pc: RTCPeerConnection;
+    try {
+      pc = new RTCPeerConnection(RTC_CONFIG);
+    } catch (error) {
+      console.warn('[WebRTC] ICE configuration rejected; retrying with STUN fallback:', error);
+      pc = new RTCPeerConnection({
+        iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
+        iceCandidatePoolSize: 10,
+      });
+    }
     this.peerConnection = pc;
     this.remoteStream = new MediaStream();
     onRemoteStream(this.remoteStream);
