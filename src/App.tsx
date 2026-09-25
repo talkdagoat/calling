@@ -26,6 +26,7 @@ import { IncomingCallModal } from './components/IncomingCallModal';
 import { ActiveCallView } from './components/ActiveCallView';
 import { DeviceSettingsModal } from './components/DeviceSettingsModal';
 import { GoogleDriveModal } from './components/GoogleDriveModal';
+import { SlackChat } from './components/SlackChat';
 
 export default function App() {
   // Account Onboarding State
@@ -40,7 +41,7 @@ export default function App() {
   });
 
   // Navigation: 'contacts' (Dial + Contacts) or 'history' (Calls)
-  const [activeNavTab, setActiveNavTab] = useState<'contacts' | 'history'>('contacts');
+  const [activeNavTab, setActiveNavTab] = useState<'contacts' | 'history' | 'chat'>('contacts');
 
   // Contacts JSON State
   const [contacts, setContacts] = useState<Contact[]>(() => loadSavedContacts());
@@ -1064,6 +1065,15 @@ export default function App() {
             onInviteToRoom={(contact) => handleInitiateCall(contact, 'group')}
             currentUserName={identity.name}
             currentUserId={identity.id}
+          />
+        )}
+
+        {activeNavTab === 'chat' && (
+          <SlackChat
+            identity={identity}
+            contacts={contacts}
+            onCall={(contact) => handleInitiateCall(contact, 'audio')}
+            onVideoCall={(contact) => handleInitiateCall(contact, 'video')}
           />
         )}
 
