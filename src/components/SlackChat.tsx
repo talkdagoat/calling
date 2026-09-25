@@ -160,13 +160,15 @@ export const SlackChat: React.FC<SlackChatProps> = ({ identity, contacts, onCall
           {selectedContact && (
             <div className="mt-4 grid grid-cols-2 gap-2">
               <button
-                onClick={() => startCall(selectedContact, 'audio')}\n                disabled={startingCall !== ''}
+                onClick={() => startCall(selectedContact, 'audio')}
+                disabled={startingCall !== ''}
                 className="flex items-center justify-center gap-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white py-2 text-xs font-semibold"
               >
                 <Phone className="w-3.5 h-3.5" /> {startingCall === `audio:${selectedContact.id}` ? 'Calling…' : 'Call'}
               </button>
               <button
-                onClick={() => startCall(selectedContact, 'video')}\n                disabled={startingCall !== ''}
+                onClick={() => startCall(selectedContact, 'video')}
+                disabled={startingCall !== ''}
                 className="flex items-center justify-center gap-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white py-2 text-xs font-semibold"
               >
                 <Video className="w-3.5 h-3.5" /> {startingCall === `video:${selectedContact.id}` ? 'Calling…' : 'Video'}
