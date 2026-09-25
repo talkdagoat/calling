@@ -16,6 +16,7 @@ import { mediaManager } from './utils/webrtcManager';
 import { googleDriveService, TalkDrivePayload } from './utils/googleDriveSync';
 import { notificationEngine } from './utils/notificationEngine';
 import { registerUserInFirestore, testFirestoreConnection } from './lib/firebase';
+import { sendSignalingEvent, subscribeToSignaling } from './utils/firestoreSignaling';
 
 import { Navbar } from './components/Navbar';
 import { WhatsAppNotificationBanner } from './components/WhatsAppNotificationBanner';
@@ -116,7 +117,7 @@ export default function App() {
   // Real-time WebSocket Connectivity State
   const [isWsConnected, setIsWsConnected] = useState(false);
   const [activeConnectedDevices, setActiveConnectedDevices] = useState(1);
-  const wsRef = useRef<WebSocket | null>(null);
+  const wsRef = useRef<{ readyState: number; send: (data: string) => void; close: () => void } | null>(null);
   const callTimerRef = useRef<any>(null);
 
   // Background auto-sync helper to Central Server Storage and Local Storage
@@ -352,32 +353,28 @@ export default function App() {
     triggerCentralServerSync(contacts, newRecords, identity);
   };
 
-  // Setup WebSocket Signaling
+  // Firestore signaling for Vercel-hosted calls (no custom WebSocket server required)
   useEffect(() => {
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.host}/ws/signaling`;
-
-    let ws: WebSocket;
-    const connectWs = () => {
-      ws = new WebSocket(wsUrl);
-      wsRef.current = ws;
-
-      ws.onopen = () => {
-        setIsWsConnected(true);
-        // Register current device identity
-        ws.send(
-          JSON.stringify({
-            type: 'register',
-            sender: identity,
-            timestamp: Date.now(),
-          })
-        );
-      };
-
-      ws.onmessage = (event) => {
+    const client = {
+      readyState: 1,
+      send: (data: string) => {
         try {
-          const msg = JSON.parse(event.data);
+          const message = JSON.parse(data);
+          if (!message.targetUserId) return;
+          sendSignalingEvent(message.targetUserId, message).catch((error) => {
+            console.error('[Signaling] Failed to send event:', error);
+          });
+        } catch (error) {
+          console.error('[Signaling] Invalid outgoing message:', error);
+        }
+      },
+      close: () => undefined,
+    };
+    wsRef.current = client;
+    setIsWsConnected(true);
 
+    const unsubscribe = subscribeToSignaling(identity.id, (msg) => {
+      try {
           switch (msg.type) {
             case 'registered':
               setActiveConnectedDevices(msg.activeConnectedDevices || 1);
@@ -544,21 +541,15 @@ export default function App() {
               break;
             }
           }
-        } catch (e) {
-          console.error('WS message error:', e);
-        }
-      };
-
-      ws.onclose = () => {
-        setIsWsConnected(false);
-        setTimeout(connectWs, 3000);
-      };
-    };
-
-    connectWs();
+      } catch (e) {
+        console.error('Signaling message error:', e);
+      }
+    });
 
     return () => {
-      if (ws) ws.close();
+      unsubscribe();
+      if (wsRef.current === client) wsRef.current = null;
+      setIsWsConnected(false);
       ringEngine.stopAll();
     };
   }, [identity.id, ringtoneConfig.ringtoneType]);
