@@ -530,7 +530,6 @@ app.post('/api/slack/messages', async (req, res) => {
   } catch (err) {
     res.status(503).json({ error: err instanceof Error ? err.message : 'Unable to send Slack message' });
   }
-  }
 });
 
 // REST API Routes using SQL Database
