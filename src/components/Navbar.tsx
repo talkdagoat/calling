@@ -1,12 +1,12 @@
 import React from 'react';
 import { 
-  ShieldCheck, Users, Clock, Settings, HardDrive, CheckCircle2 
+  ShieldCheck, Users, Clock, MessageCircle, Settings, HardDrive, CheckCircle2 
 } from 'lucide-react';
 import { UserIdentity } from '../types';
 
 interface NavbarProps {
-  activeTab: 'contacts' | 'history';
-  onSelectTab: (tab: 'contacts' | 'history') => void;
+  activeTab: 'contacts' | 'history' | 'chat';
+  onSelectTab: (tab: 'contacts' | 'history' | 'chat') => void;
   currentIdentity: UserIdentity;
   onOpenSettings: () => void;
   onQuickTestRing?: () => void;
@@ -52,6 +52,19 @@ export const Navbar: React.FC<NavbarProps> = ({
           >
             <Users className="w-3.5 h-3.5 text-emerald-400" />
             <span>Contacts</span>
+          </button>
+
+          <button
+            id="nav-tab-chat"
+            onClick={() => onSelectTab('chat')}
+            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+              activeTab === 'chat'
+                ? 'bg-[#1e1e24] text-white shadow-md border border-zinc-700/80'
+                : 'text-zinc-400 hover:text-zinc-200'
+            }`}
+          >
+            <MessageCircle className="w-3.5 h-3.5 text-sky-400" />
+            <span>Chat</span>
           </button>
 
           <button
