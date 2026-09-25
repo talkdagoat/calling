@@ -111,6 +111,7 @@ export default function App() {
   const [incomingCall, setIncomingCall] = useState<CallSession | null>(null);
   const [inCallMessages, setInCallMessages] = useState<InCallMessage[]>([]);
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
+  const [callError, setCallError] = useState<string | null>(null);
 
   // Real-time WebSocket Connectivity State
   const [isWsConnected, setIsWsConnected] = useState(false);
@@ -579,6 +580,7 @@ export default function App() {
 
   // Initiate Outgoing Call (1:1 Audio or HD Video)
   const handleInitiateCall = async (contact: Contact, type: CallType) => {
+    setCallError(null);
     const callId = `call_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
     const safetyNumber = await generateSafetyNumber(
       identity.publicKeyFingerprint,
@@ -586,7 +588,12 @@ export default function App() {
     );
 
     // Initialize local audio/video media and WebRTC peer connection
-    await mediaManager.getLocalMedia(type === 'video', true);
+    try {
+      await mediaManager.getLocalMedia(type === 'video', true);
+    } catch (error) {
+      setCallError(error instanceof Error ? error.message : 'Unable to access your microphone/camera.');
+      return;
+    }
     mediaManager.createPeerConnection(
       (stream) => {
         setRemoteStream(stream);
@@ -605,6 +612,15 @@ export default function App() {
               timestamp: Date.now(),
             })
           );
+        }
+      },
+      (state) => {
+        if (state === 'connected') {
+          setActiveCall(prev => prev && prev.id === callId ? { ...prev, status: 'connected', startTime: prev.startTime || Date.now() } : prev);
+          ringEngine.stopAll();
+          ringEngine.playConnectedTone();
+        } else if (state === 'failed' || state === 'closed') {
+          setCallError('The call could not establish a media connection. Check your network/TURN settings and try again.');
         }
       }
     );
@@ -742,7 +758,12 @@ export default function App() {
     notificationEngine.dismissIncomingCallAlert(incomingCall.id);
 
     // Initialize local media and WebRTC peer connection
-    await mediaManager.getLocalMedia(type === 'video', true);
+    try {
+      await mediaManager.getLocalMedia(type === 'video', true);
+    } catch (error) {
+      setCallError(error instanceof Error ? error.message : 'Unable to access your microphone/camera.');
+      return;
+    }
     mediaManager.createPeerConnection(
       (stream) => {
         setRemoteStream(stream);
@@ -762,19 +783,28 @@ export default function App() {
             })
           );
         }
+      },
+      (state) => {
+        if (state === 'connected') {
+          setActiveCall(prev => prev && prev.id === incomingCall.id ? { ...prev, status: 'connected', startTime: prev.startTime || Date.now() } : prev);
+        } else if (state === 'failed') {
+          setCallError('The call could not establish a media connection. Check your network/TURN settings and try again.');
+        }
       }
     );
 
     const connectedCall: CallSession = {
       ...incomingCall,
       type,
-      status: 'connected',
+      status: 'connecting',
       startTime: Date.now(),
       isVideoOff: type === 'audio',
     };
 
     setActiveCall(connectedCall);
     setIncomingCall(null);
+
+    setCallError(null);
 
     // Notify caller via WebSocket
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
@@ -836,6 +866,7 @@ export default function App() {
   // End Call & Cleanup
   const handleEndCall = () => {
     if (!activeCall) return;
+    setCallError(null);
     ringEngine.stopAll();
     ringEngine.playEndCallTone();
     notificationEngine.dismissIncomingCallAlert(activeCall.id);
@@ -1107,6 +1138,14 @@ export default function App() {
       />
 
       {/* Active Call HUD & Video/Audio View */}
+      {callError && (
+        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-[80] max-w-lg w-[calc(100%-2rem)] rounded-xl border border-red-500/40 bg-red-950/95 px-4 py-3 text-sm text-red-100 shadow-2xl">
+          <div className="flex items-start justify-between gap-3">
+            <span>{callError}</span>
+            <button onClick={() => setCallError(null)} className="text-red-300 hover:text-white" aria-label="Dismiss">×</button>
+          </div>
+        </div>
+      )}
       {activeCall && (
         <ActiveCallView
           call={activeCall}
