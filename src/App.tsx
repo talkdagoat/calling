@@ -439,14 +439,13 @@ export default function App() {
                 if (!prev) return null;
                 return {
                   ...prev,
-                  status: 'connected',
-                  startTime: Date.now(),
+                  status: 'connecting',
                 };
               });
 
               // Create WebRTC Offer for remote peer
               mediaManager.createOffer().then((offer) => {
-                if (offer && wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+                if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
                   wsRef.current.send(
                     JSON.stringify({
                       type: 'webrtc:offer',
@@ -460,6 +459,8 @@ export default function App() {
                     })
                   );
                 }
+              }).catch((error) => {
+                setCallError(error instanceof Error ? error.message : 'Unable to create the WebRTC offer.');
               });
               break;
             }
@@ -467,7 +468,7 @@ export default function App() {
             case 'webrtc:offer': {
               if (msg.payload?.sdp) {
                 mediaManager.handleOffer(msg.payload.sdp).then((answer) => {
-                  if (answer && wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+                  if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
                     wsRef.current.send(
                       JSON.stringify({
                         type: 'webrtc:answer',
@@ -481,6 +482,8 @@ export default function App() {
                       })
                     );
                   }
+                }).catch((error) => {
+                  setCallError(error instanceof Error ? error.message : 'Unable to answer the WebRTC offer.');
                 });
               }
               break;
@@ -488,7 +491,9 @@ export default function App() {
 
             case 'webrtc:answer': {
               if (msg.payload?.sdp) {
-                mediaManager.handleAnswer(msg.payload.sdp);
+                mediaManager.handleAnswer(msg.payload.sdp).catch((error) => {
+                  setCallError(error instanceof Error ? error.message : 'Unable to complete the WebRTC handshake.');
+                });
               }
               break;
             }
