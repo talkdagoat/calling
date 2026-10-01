@@ -1,7 +1,7 @@
 // Temporary account directory compatibility layer.
-// Firebase has been removed from the app. This file keeps the existing
-// component imports working while account names live only in the current
-// browser/session and the WebSocket server's in-memory connection map.
+// Firebase has been removed from the runtime and dependencies. Account names
+// are temporary: the active identity is kept in browser state only while the
+// page is open, and the identity keys are cleared when the page is exited.
 
 export interface TemporaryUser {
   id: string;
@@ -13,9 +13,27 @@ export interface TemporaryUser {
   createdAt: string;
 }
 
+const TEMP_KEYS = [
+  'talk_account_user_name',
+  'talk_user_identity',
+  'talk_user_contacts',
+  'talk_call_history',
+  'talk_app_settings',
+];
+
+if (typeof window !== 'undefined') {
+  const clearTemporaryAccount = () => {
+    try {
+      for (const key of TEMP_KEYS) localStorage.removeItem(key);
+    } catch {}
+  };
+
+  // A browser refresh/close/navigation is the end of a temporary test session.
+  window.addEventListener('pagehide', clearTemporaryAccount, { capture: true });
+  window.addEventListener('beforeunload', clearTemporaryAccount, { capture: true });
+}
+
 export async function testFirestoreConnection(): Promise<boolean> {
-  // Kept for compatibility with the existing startup code. There is no
-  // database connection anymore.
   return true;
 }
 
@@ -37,7 +55,7 @@ export async function registerUserInFirestore(user: {
   };
 }
 
-export async function findTalkUserByName(name: string): Promise<TemporaryUser | null> {
+export async function findTalkUserByName(_name: string): Promise<TemporaryUser | null> {
   return null;
 }
 
