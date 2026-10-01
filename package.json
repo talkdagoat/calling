@@ -1,7 +1,7 @@
 {
-  "name": "react-example",
+  "name": "talk-calling-temp",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0-test",
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",
@@ -32,8 +32,9 @@
     "@types/ws": "^8.18.1",
     "autoprefixer": "^10.4.21",
     "esbuild": "^0.25.0",
-    "tailwindcss": "^4.1.14",
+    "tailwindcss": "^4.1.24",
+    "typescript": "~5.8.2",
     "tsx": "^4.21.0",
-    "typescript": "~5.8.2"
+    "esbuild": "^0.25.0"
   }
 }
