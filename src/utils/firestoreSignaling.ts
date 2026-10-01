@@ -14,6 +14,8 @@ export type SignalingEvent = {
 
 type Listener = (event: SignalingEvent) => void;
 
+// The filename is retained only for compatibility with the existing App import.
+// There is no Firestore usage here: all signaling is Vercel WebSocket signaling.
 let socket: WebSocket | null = null;
 let currentUserId = '';
 let currentIdentity: any = null;
@@ -97,6 +99,16 @@ export async function sendSignalingEvent(targetUserId: string, event: Omit<Signa
   else pending.push(message);
 }
 
+export function disconnectSignaling() {
+  if (reconnectTimer) clearTimeout(reconnectTimer);
+  reconnectTimer = null;
+  currentUserId = '';
+  currentIdentity = null;
+  pending.length = 0;
+  try { socket?.close(); } catch {}
+  socket = null;
+}
+
 export function subscribeToSignaling(userId: string, onEvent: Listener): () => void {
   if (!userId) return () => undefined;
   currentUserId = userId;
@@ -105,12 +117,6 @@ export function subscribeToSignaling(userId: string, onEvent: Listener): () => v
 
   return () => {
     listeners.delete(onEvent);
-    if (!listeners.size) {
-      if (reconnectTimer) clearTimeout(reconnectTimer);
-      reconnectTimer = null;
-      try { socket?.close(); } catch {}
-      socket = null;
-      currentIdentity = null;
-    }
+    if (!listeners.size) disconnectSignaling();
   };
 }
