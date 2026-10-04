@@ -7,6 +7,23 @@ type OnlineUser = { userId: string; deviceId?: string; deviceName?: string; name
 
 interface SlackChatProps { identity: UserIdentity; contacts?: Contact[]; onCall: (contact: Contact) => void; onVideoCall: (contact: Contact) => void; }
 
+// Build API URLs explicitly. Safari can throw the very generic
+// "The string did not match the expected pattern" when URL parsing fails.
+function apiUrl(path: string) {
+  if (typeof window === 'undefined') return path;
+  return new URL(path, window.location.origin).toString();
+}
+
+async function readApiResponse(response: Response) {
+  const text = await response.text();
+  let data: any = {};
+  try { data = text ? JSON.parse(text) : {}; } catch { data = { raw: text }; }
+  if (!response.ok) {
+    throw new Error(String(data.error || data.raw || `Request failed (${response.status})`));
+  }
+  return data;
+}
+
 export const SlackChat: React.FC<SlackChatProps> = ({ identity, onCall, onVideoCall }) => {
   const [messages, setMessages] = useState<SlackMessage[]>([]);
   const [onlineUsers, setOnlineUsers] = useState<OnlineUser[]>([]);
@@ -25,19 +42,34 @@ export const SlackChat: React.FC<SlackChatProps> = ({ identity, onCall, onVideoC
   const toContact = (u: OnlineUser): Contact => ({ id: u.userId, name: u.name, phone: '', email: '', role: 'Temporary online user', avatar: u.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(u.name)}&background=059669&color=ffffff&bold=true`, status: u.inCall ? 'busy' : 'online', publicKeyFingerprint: u.fingerprint || '4E9A B7C2 91F0 33DA 8201', deviceList: [u.deviceName || 'Web Client'], notes: '', isFavorite: false, tags: [] });
 
   const loadMessages = useCallback(async () => {
-    try { const response = await fetch('/api/slack/messages'); const data = await response.json(); if (!response.ok) throw new Error(data.error || 'Unable to load Slack messages'); const loaded = Array.isArray(data.messages) ? data.messages : []; setMessages(loaded.map((m: SlackMessage) => ({ ...m, isMine: m.senderId === identity.id }))); setError(''); }
-    catch (err) { setError(err instanceof Error ? err.message : 'Unable to load Slack chat'); }
-    finally { setLoading(false); }
+    try {
+      const url = apiUrl('/api/slack/messages');
+      const response = await fetch(url, { cache: 'no-store', headers: { Accept: 'application/json' } });
+      const data = await readApiResponse(response);
+      const loaded = Array.isArray(data.messages) ? data.messages : [];
+      setMessages(loaded.map((m: SlackMessage) => ({ ...m, isMine: m.senderId === identity.id })));
+      setError('');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error('[SlackChat][loadMessages]', message, err);
+      setError(`[chat] ${message}`);
+    } finally { setLoading(false); }
   }, [identity.id]);
 
   useEffect(() => { loadMessages(); const timer = window.setInterval(loadMessages, 5000); return () => window.clearInterval(timer); }, [loadMessages]);
 
   useEffect(() => {
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const ws = new WebSocket(`${protocol}//${window.location.host}/api/ws`);
-    ws.onopen = () => ws.send(JSON.stringify({ type: 'register', sender: identity }));
-    ws.onmessage = event => { try { const msg = JSON.parse(event.data); if (msg.type === 'presence:update' && Array.isArray(msg.onlineUsers)) setOnlineUsers(msg.onlineUsers); } catch {} };
-    return () => { try { ws.close(); } catch {} };
+    try {
+      const url = new URL('/api/ws', window.location.origin);
+      url.protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const ws = new WebSocket(url.toString());
+      ws.onopen = () => ws.send(JSON.stringify({ type: 'register', sender: identity }));
+      ws.onmessage = event => { try { const msg = JSON.parse(event.data); if (msg.type === 'presence:update' && Array.isArray(msg.onlineUsers)) setOnlineUsers(msg.onlineUsers); } catch {} };
+      ws.onerror = event => console.warn('[SlackChat][WebSocket]', event);
+      return () => { try { ws.close(); } catch {} };
+    } catch (err) {
+      console.error('[SlackChat][WebSocket setup]', err);
+    }
   }, [identity]);
 
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages.length]);
@@ -45,17 +77,21 @@ export const SlackChat: React.FC<SlackChatProps> = ({ identity, onCall, onVideoC
   const startCall = async (user: OnlineUser, type: 'audio' | 'video') => {
     const contact = toContact(user);
     try {
-      const response = await fetch('/api/slack/calls', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ callType: type, sender: { id: identity.id, name: identity.name, avatar: identity.avatar }, target: { id: contact.id, name: contact.name, avatar: contact.avatar } }) });
-      const data = await response.json(); if (!response.ok) throw new Error(data.error || 'Slack call event failed');
-    } catch (err) { setError(err instanceof Error ? err.message : 'Slack call event failed; continuing with the call'); }
+      const response = await fetch(apiUrl('/api/slack/calls'), { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify({ callType: type, sender: { id: identity.id, name: identity.name, avatar: identity.avatar }, target: { id: contact.id, name: contact.name, avatar: contact.avatar } }) });
+      await readApiResponse(response);
+    } catch (err) { setError(`[call signaling] ${err instanceof Error ? err.message : String(err)}`); }
     if (type === 'video') onVideoCall(contact); else onCall(contact);
   };
 
   const sendMessage = async () => {
     const clean = text.trim(); if (!clean || sending) return;
     setSending(true);
-    try { const response = await fetch('/api/slack/messages', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: clean, sender: { id: identity.id, name: identity.name, avatar: identity.avatar }, target: selected ? { id: selected.userId, name: selected.name } : null }) }); const data = await response.json(); if (!response.ok) throw new Error(data.error || 'Unable to send Slack message'); setText(''); await loadMessages(); }
-    catch (err) { setError(err instanceof Error ? err.message : 'Unable to send Slack message'); }
+    try {
+      const response = await fetch(apiUrl('/api/slack/messages'), { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify({ text: clean, sender: { id: identity.id, name: identity.name, avatar: identity.avatar }, target: selected ? { id: selected.userId, name: selected.name } : null }) });
+      await readApiResponse(response);
+      setText('');
+      await loadMessages();
+    } catch (err) { setError(`[send message] ${err instanceof Error ? err.message : String(err)}`); }
     finally { setSending(false); }
   };
 
