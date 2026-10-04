@@ -1,10 +1,11 @@
 import {StrictMode} from 'react';
 import {createRoot} from 'react-dom/client';
-import App from './App.tsx';
+import TemporaryApp from './TemporaryApp.tsx';
 import './index.css';
 
-// Temporary test mode: account names and test data must not survive the browser session.
+// Temporary test mode: names and session data are intentionally removed when the page exits.
 const TEMPORARY_KEYS = [
+  'talk_temp_identity',
   'talk_account_user_name',
   'talk_user_identity',
   'talk_user_contacts',
@@ -14,8 +15,10 @@ const TEMPORARY_KEYS = [
 
 const clearTemporarySession = () => {
   try {
-    for (const key of TEMPORARY_KEYS) localStorage.removeItem(key);
-    for (const key of TEMPORARY_KEYS) sessionStorage.removeItem(key);
+    for (const key of TEMPORARY_KEYS) {
+      localStorage.removeItem(key);
+      sessionStorage.removeItem(key);
+    }
   } catch {}
 };
 
@@ -24,6 +27,6 @@ window.addEventListener('beforeunload', clearTemporarySession, { capture: true }
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <App />
+    <TemporaryApp />
   </StrictMode>,
 );
