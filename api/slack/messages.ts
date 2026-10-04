@@ -1,5 +1,3 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node';
-
 const SLACK_API = 'https://slack.com/api';
 const CHANNEL_ID = process.env.SLACK_CHANNEL_ID || 'C0C4FHW9J1F';
 
@@ -8,10 +6,7 @@ async function slackApi(method: string, body: Record<string, unknown> = {}) {
   if (!token) throw new Error('SLACK_BOT_TOKEN is not configured');
   const response = await fetch(`${SLACK_API}/${method}`, {
     method: 'POST',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json; charset=utf-8',
-    },
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json; charset=utf-8' },
     body: JSON.stringify(body),
   });
   const data = await response.json() as { ok?: boolean; error?: string; [key: string]: unknown };
@@ -35,7 +30,7 @@ function mapMessage(message: any) {
   };
 }
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+export default async function handler(req: any, res: any) {
   try {
     if (req.method === 'GET') {
       const data = await slackApi('conversations.history', { channel: CHANNEL_ID, limit: 50 });
