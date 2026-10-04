@@ -12,8 +12,6 @@ function apiUrl(path: string) {
   return new URL(path, window.location.origin).toString();
 }
 
-// Safari can throw DOMException/TypeError-like objects that don't stringify usefully.
-// Always turn the original error into a readable diagnostic instead of [object Object].
 function describeError(error: unknown): string {
   if (error instanceof Error) {
     const details = [error.name, error.message].filter(Boolean).join(': ');
@@ -42,6 +40,21 @@ async function readApiResponse(response: Response) {
     throw new Error(`HTTP ${response.status}: ${describeError(serverError || data?.raw || 'Request failed')}`);
   }
   return data;
+}
+
+function formatMessageTime(ts: string) {
+  const seconds = Number(ts);
+  if (!Number.isFinite(seconds)) return '';
+  const date = new Date(seconds * 1000);
+  if (Number.isNaN(date.getTime())) return '';
+  return new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' }).format(date);
+}
+
+function safeSenderName(name: string, isMine: boolean) {
+  const trimmed = String(name || '').trim();
+  // Never expose raw Slack member IDs such as U0ABC123XYZ in the temporary UI.
+  if (/^U[A-Z0-9]{6,}$/i.test(trimmed)) return isMine ? 'You' : 'Temporary participant';
+  return trimmed || (isMine ? 'You' : 'Temporary participant');
 }
 
 export const SlackChat: React.FC<SlackChatProps> = ({ identity, onCall, onVideoCall }) => {
@@ -123,7 +136,7 @@ export const SlackChat: React.FC<SlackChatProps> = ({ identity, onCall, onVideoC
     </aside>
     <div className="rounded-3xl border border-zinc-800 bg-[#0f0f14] overflow-hidden flex flex-col min-h-0"><header className="px-5 py-4 border-b border-zinc-800 flex items-center justify-between"><div><h1 className="text-sm font-bold text-white">Temporary team chat</h1><p className="text-[11px] text-zinc-500">Slack-backed messages • no saved Talk contacts</p></div><button onClick={loadMessages} className="p-2 rounded-xl border border-zinc-800 text-zinc-400 hover:text-white"><RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /></button></header>
       {error && <div className="mx-5 mt-4 rounded-xl border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-xs text-amber-300">{error}</div>}
-      <div className="flex-1 overflow-y-auto p-5 space-y-3">{loading && messages.length === 0 && <div className="text-sm text-zinc-500 text-center py-12">Loading Slack chat…</div>}{!loading && messages.length === 0 && !error && <div className="text-sm text-zinc-500 text-center py-12">No messages yet. Send the first one.</div>}{messages.map(m => <div key={m.id} className={`flex ${m.isMine ? 'justify-end' : 'justify-start'}`}><div className={`max-w-[80%] rounded-2xl px-4 py-2.5 ${m.isMine ? 'bg-emerald-600 text-white rounded-br-md' : 'bg-zinc-900 border border-zinc-800 text-zinc-100 rounded-bl-md'}`}><div className="text-[10px] font-semibold mb-1">{m.senderName}</div><div className="text-sm whitespace-pre-wrap">{m.text}</div><div className="text-[9px] opacity-60 mt-1">{m.ts}</div></div></div>)}<div ref={endRef} /></div>
+      <div className="flex-1 overflow-y-auto p-5 space-y-3">{loading && messages.length === 0 && <div className="text-sm text-zinc-500 text-center py-12">Loading Slack chat…</div>}{!loading && messages.length === 0 && !error && <div className="text-sm text-zinc-500 text-center py-12">No messages yet. Send the first one.</div>}{messages.map(m => <div key={m.id} className={`flex ${m.isMine ? 'justify-end' : 'justify-start'}`}><div className={`max-w-[80%] rounded-2xl px-4 py-2.5 ${m.isMine ? 'bg-emerald-600 text-white rounded-br-md' : 'bg-zinc-900 border border-zinc-800 text-zinc-100 rounded-bl-md'}`}><div className="text-[10px] font-semibold mb-1">{safeSenderName(m.senderName, m.isMine)}</div><div className="text-sm whitespace-pre-wrap">{m.text}</div><div className="text-[9px] opacity-60 mt-1">{formatMessageTime(m.ts)}</div></div></div>)}<div ref={endRef} /></div>
       <div className="p-4 border-t border-zinc-800 flex gap-2"><input value={text} onChange={e => setText(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') sendMessage(); }} placeholder={selected ? `Message ${selected.name}...` : 'Message everyone...'} className="flex-1 bg-zinc-900 border border-zinc-800 rounded-2xl px-4 py-3 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500" /><button onClick={sendMessage} disabled={sending || !text.trim()} className="px-4 rounded-2xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white"><Send className="w-4 h-4" /></button></div>
     </div>
   </div></section>;
