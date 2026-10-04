@@ -7,11 +7,30 @@ type OnlineUser = { userId: string; deviceId?: string; deviceName?: string; name
 
 interface SlackChatProps { identity: UserIdentity; contacts?: Contact[]; onCall: (contact: Contact) => void; onVideoCall: (contact: Contact) => void; }
 
-// Build API URLs explicitly. Safari can throw the very generic
-// "The string did not match the expected pattern" when URL parsing fails.
 function apiUrl(path: string) {
   if (typeof window === 'undefined') return path;
   return new URL(path, window.location.origin).toString();
+}
+
+// Safari can throw DOMException/TypeError-like objects that don't stringify usefully.
+// Always turn the original error into a readable diagnostic instead of [object Object].
+function describeError(error: unknown): string {
+  if (error instanceof Error) {
+    const details = [error.name, error.message].filter(Boolean).join(': ');
+    if (error.cause) {
+      const cause = describeError(error.cause);
+      return `${details}${cause ? ` | cause: ${cause}` : ''}`;
+    }
+    return details || 'Unknown error';
+  }
+  if (error && typeof error === 'object') {
+    const value = error as Record<string, unknown>;
+    const name = typeof value.name === 'string' ? value.name : '';
+    const message = typeof value.message === 'string' ? value.message : '';
+    if (name || message) return [name, message].filter(Boolean).join(': ');
+    try { return JSON.stringify(error); } catch { return Object.prototype.toString.call(error); }
+  }
+  return String(error ?? 'Unknown error');
 }
 
 async function readApiResponse(response: Response) {
@@ -19,7 +38,8 @@ async function readApiResponse(response: Response) {
   let data: any = {};
   try { data = text ? JSON.parse(text) : {}; } catch { data = { raw: text }; }
   if (!response.ok) {
-    throw new Error(String(data.error || data.raw || `Request failed (${response.status})`));
+    const serverError = data?.error;
+    throw new Error(`HTTP ${response.status}: ${describeError(serverError || data?.raw || 'Request failed')}`);
   }
   return data;
 }
@@ -50,8 +70,8 @@ export const SlackChat: React.FC<SlackChatProps> = ({ identity, onCall, onVideoC
       setMessages(loaded.map((m: SlackMessage) => ({ ...m, isMine: m.senderId === identity.id })));
       setError('');
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      console.error('[SlackChat][loadMessages]', message, err);
+      const message = describeError(err);
+      console.error('[SlackChat][loadMessages]', err);
       setError(`[chat] ${message}`);
     } finally { setLoading(false); }
   }, [identity.id]);
@@ -79,7 +99,7 @@ export const SlackChat: React.FC<SlackChatProps> = ({ identity, onCall, onVideoC
     try {
       const response = await fetch(apiUrl('/api/slack/calls'), { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify({ callType: type, sender: { id: identity.id, name: identity.name, avatar: identity.avatar }, target: { id: contact.id, name: contact.name, avatar: contact.avatar } }) });
       await readApiResponse(response);
-    } catch (err) { setError(`[call signaling] ${err instanceof Error ? err.message : String(err)}`); }
+    } catch (err) { setError(`[call signaling] ${describeError(err)}`); }
     if (type === 'video') onVideoCall(contact); else onCall(contact);
   };
 
@@ -91,7 +111,7 @@ export const SlackChat: React.FC<SlackChatProps> = ({ identity, onCall, onVideoC
       await readApiResponse(response);
       setText('');
       await loadMessages();
-    } catch (err) { setError(`[send message] ${err instanceof Error ? err.message : String(err)}`); }
+    } catch (err) { setError(`[send message] ${describeError(err)}`); }
     finally { setSending(false); }
   };
 
