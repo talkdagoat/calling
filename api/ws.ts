@@ -19,7 +19,6 @@ type Client = {
 };
 
 const clients = new Map<WebSocket, Client>();
-
 const clean = (value: unknown) => String(value ?? '').trim().toLowerCase();
 const safe = (value: unknown) => clean(value).replace(/^user_/, '').replace(/_[0-9]+$/, '').replace(/[^a-z0-9]/g, '');
 
@@ -51,6 +50,16 @@ function broadcastPresence() {
   for (const ws of clients.keys()) send(ws, message);
 }
 
+function notifyCallEnded(disconnected: Client) {
+  if (!disconnected.inCallWith) return;
+  for (const [peer, peerInfo] of clients.entries()) {
+    if (peerInfo.userId === disconnected.inCallWith || peerInfo.name.toLowerCase() === disconnected.inCallWith.toLowerCase()) {
+      send(peer, { type: 'call:ended', callId: undefined, sender: { id: disconnected.userId, name: disconnected.name }, reason: 'peer_disconnected', timestamp: Date.now() });
+      peerInfo.inCallWith = undefined;
+    }
+  }
+}
+
 wss.on('connection', ws => {
   ws.on('message', raw => {
     try {
@@ -76,40 +85,31 @@ wss.on('connection', ws => {
       const senderInfo = clients.get(ws);
       if (!senderInfo) return;
 
-      if (type === 'room:join') {
-        senderInfo.roomId = roomId;
-        for (const [peer, peerInfo] of clients.entries()) {
-          if (peer !== ws && peerInfo.roomId === roomId) send(peer, { type: 'room:joined', roomId, sender, payload, timestamp: Date.now() });
-        }
-        return;
-      }
-
       if (type === 'call:invite') {
+        senderInfo.inCallWith = targetUserId || targetUserName;
         let found = 0;
         for (const [peer, peerInfo] of clients.entries()) {
           if (peer !== ws && matchesTarget(peerInfo, targetUserId, targetUserName, targetDeviceId)) {
             found++;
-            send(peer, {
-              type: 'call:incoming', callId, callType, sender,
-              roomId: roomId || `room_${callId}`,
-              payload: { ...(payload || {}), callerName: sender?.name, callerAvatar: sender?.avatar },
-              timestamp: Date.now(),
-            });
+            send(peer, { type: 'call:incoming', callId, callType, sender, roomId: roomId || `room_${callId}`, payload: { ...(payload || {}), callerName: sender?.name, callerAvatar: sender?.avatar }, timestamp: Date.now() });
           }
         }
+        if (!found) senderInfo.inCallWith = undefined;
         send(ws, { type: 'call:status', callId, targetDevicesFound: found, targetUserId, targetUserName, timestamp: Date.now() });
+        broadcastPresence();
         return;
       }
 
       if (type === 'call:accept' || type === 'call:reject' || type === 'call:end') {
-        if (type === 'call:accept') senderInfo.inCallWith = targetUserId;
-        if (type === 'call:end') senderInfo.inCallWith = undefined;
+        if (type === 'call:accept') senderInfo.inCallWith = targetUserId || targetUserName;
         const mappedType = type === 'call:accept' ? 'call:accepted' : type === 'call:reject' ? 'call:rejected' : 'call:ended';
         for (const [peer, peerInfo] of clients.entries()) {
           if (peer !== ws && matchesTarget(peerInfo, targetUserId, targetUserName, targetDeviceId)) {
             send(peer, { type: mappedType, callId, callType, sender, roomId, payload, timestamp: Date.now() });
+            if (type === 'call:end' || type === 'call:reject') peerInfo.inCallWith = undefined;
           }
         }
+        senderInfo.inCallWith = type === 'call:accept' ? senderInfo.inCallWith : undefined;
         broadcastPresence();
         return;
       }
@@ -136,11 +136,16 @@ wss.on('connection', ws => {
   });
 
   ws.on('close', () => {
+    const disconnected = clients.get(ws);
+    if (disconnected) notifyCallEnded(disconnected);
     clients.delete(ws);
     broadcastPresence();
   });
   ws.on('error', () => {
+    const disconnected = clients.get(ws);
+    if (disconnected) notifyCallEnded(disconnected);
     clients.delete(ws);
+    broadcastPresence();
   });
 });
 
