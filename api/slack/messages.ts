@@ -14,6 +14,21 @@ async function slackApi(method: string, body: Record<string, unknown> = {}) {
   return data;
 }
 
+// Public channels still require the bot to be a member when using conversations.history.
+// Join automatically so a fresh temporary Slack installation does not fail with not_in_channel.
+async function ensureChannelMembership() {
+  try {
+    await slackApi('conversations.join', { channel: CHANNEL_ID });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    // Already being in the channel is fine. If the app lacks channels:join, surface
+    // a useful setup error instead of the misleading downstream not_in_channel.
+    if (message !== 'already_in_channel') {
+      throw new Error(`Slack channel access failed: ${message}. Add the bot to the public channel or grant channels:join and reinstall the Slack app.`);
+    }
+  }
+}
+
 function mapMessage(message: any) {
   const metadataType = message?.metadata?.event_type;
   const payload = message?.metadata?.event_payload || {};
@@ -32,6 +47,8 @@ function mapMessage(message: any) {
 
 export default async function handler(req: any, res: any) {
   try {
+    await ensureChannelMembership();
+
     if (req.method === 'GET') {
       const data = await slackApi('conversations.history', { channel: CHANNEL_ID, limit: 50 });
       const messages = (Array.isArray(data.messages) ? data.messages : [])
