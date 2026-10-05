@@ -1,9 +1,8 @@
 import {StrictMode} from 'react';
 import {createRoot} from 'react-dom/client';
-import TemporaryApp from './TemporaryApp.tsx';
+import TemporaryCallApp from './TemporaryCallApp.tsx';
 import './index.css';
 
-// Temporary test mode: names and session data are intentionally removed when the page exits.
 const TEMPORARY_KEYS = [
   'talk_temp_identity',
   'talk_account_user_name',
@@ -27,6 +26,6 @@ window.addEventListener('beforeunload', clearTemporarySession, { capture: true }
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <TemporaryApp />
+    <TemporaryCallApp />
   </StrictMode>,
 );
