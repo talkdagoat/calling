@@ -33,9 +33,16 @@ function mapMessage(message: any) {
 export default async function handler(req: any, res: any) {
   try {
     if (req.method === 'GET') {
-      const data = await slackApi('conversations.history', { channel: CHANNEL_ID, limit: 50 });
+      // Slack only returns message metadata when explicitly requested.
+      // The temporary Talk name is stored in that metadata, so without this
+      // flag the UI falls back to the Slack bot/member ID.
+      const data = await slackApi('conversations.history', {
+        channel: CHANNEL_ID,
+        limit: 50,
+        include_all_metadata: true,
+      });
       const messages = (Array.isArray(data.messages) ? data.messages : [])
-        .filter((message: any) => message.type === 'message' && !message.subtype)
+        .filter((message: any) => message.type === 'message' && message.subtype !== 'message_deleted')
         .reverse()
         .map(mapMessage);
       return res.status(200).json({ messages });
@@ -48,7 +55,14 @@ export default async function handler(req: any, res: any) {
       const data = await slackApi('chat.postMessage', {
         channel: CHANNEL_ID,
         text: messageText,
-        metadata: { event_type: 'talk_temporary_chat', event_payload: { display_name: String(sender.name).slice(0, 80), sender_id: String(sender.id).slice(0, 120), avatar: typeof sender.avatar === 'string' ? sender.avatar.slice(0, 500) : '' } },
+        metadata: {
+          event_type: 'talk_temporary_chat',
+          event_payload: {
+            display_name: String(sender.name).slice(0, 80),
+            sender_id: String(sender.id).slice(0, 120),
+            avatar: typeof sender.avatar === 'string' ? sender.avatar.slice(0, 500) : '',
+          },
+        },
       });
       return res.status(200).json({ ok: true, ts: data.ts });
     }
